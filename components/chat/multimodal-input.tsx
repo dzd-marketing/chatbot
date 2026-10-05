@@ -44,6 +44,7 @@ import {
   DEFAULT_CHAT_MODEL,
   type ModelCapabilities,
 } from "@/lib/ai/models";
+import { isExternalUrl, PRIVACY_URL, TERMS_URL } from "@/lib/legal";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
@@ -71,6 +72,12 @@ function setCookie(name: string, value: string) {
   // biome-ignore lint/suspicious/noDocumentCookie: needed for client-side cookie setting
   document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}`;
 }
+
+// Website legal pages open in a new tab; in-app placeholders stay in the tab.
+const legalLinkProps = (url: string) =>
+  isExternalUrl(url)
+    ? { rel: "noopener noreferrer", target: "_blank" as const }
+    : {};
 
 function PureMultimodalInput({
   chatId,
@@ -584,18 +591,16 @@ function PureMultimodalInput({
           By using DZD Learn AI, you agree to our{" "}
           <a
             className="font-medium text-foreground/80 underline decoration-foreground/30 underline-offset-[3px] transition-colors hover:text-foreground hover:decoration-foreground/70"
-            href="https://proton.me/lumo/terms"
-            rel="noopener noreferrer"
-            target="_blank"
+            href={TERMS_URL}
+            {...legalLinkProps(TERMS_URL)}
           >
             Terms
           </a>{" "}
           and{" "}
           <a
             className="font-medium text-foreground/80 underline decoration-foreground/30 underline-offset-[3px] transition-colors hover:text-foreground hover:decoration-foreground/70"
-            href="https://proton.me/lumo/privacy-policy"
-            rel="noopener noreferrer"
-            target="_blank"
+            href={PRIVACY_URL}
+            {...legalLinkProps(PRIVACY_URL)}
           >
             Privacy Policy
           </a>

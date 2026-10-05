@@ -2,6 +2,8 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { guestRegex, isDevelopmentEnvironment } from "./lib/constants";
 
+const PUBLIC_PATHS = new Set(["/terms", "/privacy"]);
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -10,6 +12,11 @@ export async function proxy(request: NextRequest) {
   }
 
   if (pathname.startsWith("/api/auth")) {
+    return NextResponse.next();
+  }
+
+  // Legal pages are public: no guest session needed to read them.
+  if (PUBLIC_PATHS.has(pathname)) {
     return NextResponse.next();
   }
 
