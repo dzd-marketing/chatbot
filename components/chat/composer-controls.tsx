@@ -57,17 +57,23 @@ export function WebSearchToggle() {
   // Assume support until capabilities load, so the default "on" state
   // doesn't flicker.
   const supportsTools = capabilities?.[currentModelId]?.tools ?? true;
-  const active = webSearchEnabled && supportsTools;
+  // Models with their own server-side search (DZD Learn AI) decide by
+  // themselves when to search, so the toggle shows "on" and is locked.
+  const builtIn = capabilities?.[currentModelId]?.builtInWebSearch === true;
+  const canToggle = supportsTools && !builtIn;
+  const active = builtIn || (webSearchEnabled && supportsTools);
 
   const handleClick = useCallback(() => {
-    if (!supportsTools) {
+    if (!canToggle) {
       return;
     }
     setWebSearchEnabled(!webSearchEnabled);
-  }, [setWebSearchEnabled, supportsTools, webSearchEnabled]);
+  }, [canToggle, setWebSearchEnabled, webSearchEnabled]);
 
   let hint = "Web search is off";
-  if (!supportsTools) {
+  if (builtIn) {
+    hint = "Built-in web search: DZD Learn AI looks things up when needed";
+  } else if (!supportsTools) {
     hint = "This model can't search the web";
   } else if (active) {
     hint = "Web search is on: DZD AI can look things up and cite sources";
@@ -77,7 +83,7 @@ export function WebSearchToggle() {
     <Tooltip>
       <TooltipTrigger asChild>
         <button
-          aria-disabled={!supportsTools}
+          aria-disabled={!canToggle}
           aria-label="Web search"
           aria-pressed={active}
           className={cn(
@@ -85,7 +91,9 @@ export function WebSearchToggle() {
             active
               ? "border-brand/30 bg-brand/8 text-brand hover:border-brand/45"
               : "border-border/40 text-muted-foreground hover:border-border hover:text-foreground",
+            builtIn && "cursor-default",
             !supportsTools &&
+              !builtIn &&
               "cursor-not-allowed opacity-50 hover:border-border/40 hover:text-muted-foreground"
           )}
           data-state={active ? "on" : "off"}

@@ -39,6 +39,18 @@ export type WaitingStatusData = {
   modelName: string;
 };
 
+/**
+ * DZD Learn AI's server-side work for one reply: live status lines from the
+ * Space's `dzd_progress` chunks, then the optional tool-step telemetry.
+ * Updated in place while streaming and saved with the message.
+ */
+export type DzdActivityData = {
+  status: "running" | "done";
+  progress: string[];
+  toolSteps?: { tool: string; ms?: number }[];
+  totalMs?: number;
+};
+
 export type CustomUIDataTypes = {
   textDelta: string;
   imageDelta: string;
@@ -55,6 +67,7 @@ export type CustomUIDataTypes = {
   "waiting-status": WaitingStatusData;
   /** Follow-up suggestions shown under the latest assistant reply. */
   suggestions: string[];
+  "dzd-activity": DzdActivityData;
 };
 
 export type ChatMessage = UIMessage<

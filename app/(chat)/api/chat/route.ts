@@ -13,6 +13,12 @@ import { checkBotId } from "botid/server";
 import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
 import { auth, type UserType } from "@/app/(auth)/auth";
+import {
+  DZD_HISTORY_MESSAGES,
+  type DzdStreamHooks,
+  getDzdMaxTokens,
+  isDzdModel,
+} from "@/lib/ai/dzd";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
 import {
   allowedModelIds,
@@ -49,7 +55,11 @@ import {
 import type { DBMessage } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
 import { checkIpRateLimit } from "@/lib/ratelimit";
-import type { ChatMessage, WaitingStatusData } from "@/lib/types";
+import type {
+  ChatMessage,
+  DzdActivityData,
+  WaitingStatusData,
+} from "@/lib/types";
 import {
   convertToUIMessages,
   generateUUID,
@@ -58,7 +68,9 @@ import {
 import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
-export const maxDuration = 60;
+// DZD Learn AI runs on CPU and may search the web first, so a reply can take
+// a few minutes (its upstream limit is DZD_TIMEOUT_MS in lib/ai/dzd.ts).
+export const maxDuration = 300;
 
 const HEALTH_CHECK_DELAY_MS = 9000;
 
@@ -66,6 +78,13 @@ function isModelStreamActivity(chunk: { type: string }) {
   return !["start", "start-step", "finish-step", "finish", "raw"].includes(
     chunk.type
   );
+}
+
+/** The latest turns, starting with a user message. */
+function recentHistory(messages: ChatMessage[], limit: number) {
+  const recent = messages.slice(-limit);
+  const firstUser = recent.findIndex((m) => m.role === "user");
+  return firstUser > 0 ? recent.slice(firstUser) : recent;
 }
 
 function getStreamContext() {
@@ -219,8 +238,12 @@ export async function POST(request: Request) {
     const supportsTools = capabilities?.tools === true;
     const webToolsEnabled = supportsTools && webSearchRequested;
     const reasoningLevel = resolveReasoningLevel(modelConfig, reasoning);
+    const isDzd = isDzdModel(chatModel);
+    const builtInWebSearch = capabilities?.builtInWebSearch === true;
 
-    const modelMessages = await convertToModelMessages(uiMessages);
+    const modelMessages = await convertToModelMessages(
+      isDzd ? recentHistory(uiMessages, DZD_HISTORY_MESSAGES) : uiMessages
+    );
 
     const stream = createUIMessageStream({
       execute: async ({ writer: dataStream }) => {
@@ -286,18 +309,56 @@ export async function POST(request: Request) {
           clearHealthCheckTimer();
         };
 
+        // DZD Learn AI: the Space's progress updates and tool telemetry are
+        // shown as one data part, updated in place and saved with the reply.
+        const dzdActivityId = generateUUID();
+        const dzd: { activity: DzdActivityData | null } = { activity: null };
+
+        const writeDzdActivity = () => {
+          const { activity } = dzd;
+          if (activity) {
+            dataStream.write({
+              data: { ...activity, progress: [...activity.progress] },
+              id: dzdActivityId,
+              type: "data-dzd-activity",
+            });
+          }
+        };
+
+        const dzdHooks: DzdStreamHooks = {
+          onProgress(text) {
+            markModelActive();
+            dzd.activity ??= { progress: [], status: "running" };
+            if (dzd.activity.progress.at(-1) === text) {
+              return;
+            }
+            dzd.activity.progress = [...dzd.activity.progress, text].slice(-12);
+            writeDzdActivity();
+          },
+          onTelemetry({ toolSteps, totalMs }) {
+            dzd.activity ??= { progress: [], status: "running" };
+            if (toolSteps) {
+              dzd.activity.toolSteps = toolSteps;
+            }
+            if (totalMs !== undefined) {
+              dzd.activity.totalMs = totalMs;
+            }
+          },
+        };
+
         const result = streamText({
-          activeTools:
-            isReasoningModel && !supportsTools
-              ? []
-              : [
-                  "getWeather",
-                  "createDocument",
-                  "editDocument",
-                  "updateDocument",
-                  "requestSuggestions",
-                  ...(webToolsEnabled ? webToolNames : []),
-                ],
+          // Models without tool support get no tools at all (llama.cpp, for
+          // one, rejects requests that include tools unless --jinja is set).
+          activeTools: supportsTools
+            ? [
+                "getWeather",
+                "createDocument",
+                "editDocument",
+                "updateDocument",
+                "requestSuggestions",
+                ...(webToolsEnabled ? webToolNames : []),
+              ]
+            : [],
           // Release text word by word at a steady pace, so the client's
           // word blur-in animation follows reading rhythm instead of bursts.
           experimental_transform: smoothStream({
@@ -305,12 +366,18 @@ export async function POST(request: Request) {
             delayInMs: 15,
           }),
           instructions: systemPrompt({
+            builtInWebSearch,
             requestHints,
             supportsTools,
             webSearch: webSearchRequested,
           }),
+          ...(isDzd && {
+            // Stop the Space's work when the student stops or leaves.
+            abortSignal: request.signal,
+            maxOutputTokens: getDzdMaxTokens(),
+          }),
           messages: modelMessages,
-          model: getLanguageModel(chatModel),
+          model: getLanguageModel(chatModel, { dzd: dzdHooks }),
           onAbort() {
             stopWaitingStatus();
           },
@@ -366,6 +433,29 @@ export async function POST(request: Request) {
           })
         );
 
+        const dzdActivityTask = isDzd
+          ? (async () => {
+              try {
+                await result.finishReason;
+              } catch {
+                /* still mark the activity as finished */
+              }
+              const { activity } = dzd;
+              const hasSteps =
+                activity !== null &&
+                (activity.progress.length > 0 ||
+                  (activity.toolSteps?.length ?? 0) > 0);
+              if (activity && hasSteps) {
+                activity.status = "done";
+                try {
+                  writeDzdActivity();
+                } catch {
+                  /* the stream may already be closed */
+                }
+              }
+            })()
+          : Promise.resolve();
+
         // Follow-up suggestions: generated once the answer is complete and
         // written as a persisted data part on the same assistant message.
         const suggestionsTask = isTestEnvironment
@@ -408,7 +498,7 @@ export async function POST(request: Request) {
           }
         }
 
-        await suggestionsTask;
+        await Promise.all([dzdActivityTask, suggestionsTask]);
       },
       generateId: generateUUID,
       onEnd: async ({ messages: finishedMessages }) => {
@@ -461,6 +551,18 @@ export async function POST(request: Request) {
           )
         ) {
           return "AI Gateway requires a valid credit card on file to service requests. Please visit https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card to add a card and unlock your free credits.";
+        }
+        if (isDzd) {
+          if (
+            error instanceof Error &&
+            error.message.includes("Missing HF_READ_TOKEN")
+          ) {
+            return "DZD Learn AI isn't set up on this server yet. Please choose another model for now.";
+          }
+          if (error instanceof Error && error.name === "DzdTimeoutError") {
+            return "DZD Learn AI took too long to answer. Please try a shorter question, or choose another model.";
+          }
+          return "DZD Learn AI isn't responding right now. Its server may be waking up, so please try again in a minute or choose another model.";
         }
         return "Oops, an error occurred!";
       },

@@ -377,20 +377,10 @@ function activeLabel(parts: ResearchPart[], isLoading: boolean) {
 }
 
 /**
- * Renders a message's reasoning + web search/read steps as a chain of
- * thought. Open while DZD AI is researching, then collapses once the answer
- * starts (unless the student opened or closed it themselves).
+ * Open while the model is researching, then collapse shortly after the
+ * answer starts, unless the student opened or closed it themselves.
  */
-export function WebResearch({
-  parts,
-  isLoading,
-  answerStarted,
-}: {
-  parts: ResearchPart[];
-  isLoading: boolean;
-  answerStarted: boolean;
-}) {
-  const isResearching = isLoading && !answerStarted;
+export function useResearchDisclosure(isResearching: boolean) {
   const [open, setOpen] = useState(isResearching);
   const userToggledRef = useRef(false);
   const wasResearchingRef = useRef(isResearching);
@@ -411,10 +401,30 @@ export function WebResearch({
     return () => clearTimeout(timer);
   }, [isResearching]);
 
-  const handleOpenChange = useCallback((next: boolean) => {
+  const onOpenChange = useCallback((next: boolean) => {
     userToggledRef.current = true;
     setOpen(next);
   }, []);
+
+  return { onOpenChange, open };
+}
+
+/**
+ * Renders a message's reasoning + web search/read steps as a chain of
+ * thought. Open while DZD AI is researching, then collapses once the answer
+ * starts (unless the student opened or closed it themselves).
+ */
+export function WebResearch({
+  parts,
+  isLoading,
+  answerStarted,
+}: {
+  parts: ResearchPart[];
+  isLoading: boolean;
+  answerStarted: boolean;
+}) {
+  const isResearching = isLoading && !answerStarted;
+  const { open, onOpenChange } = useResearchDisclosure(isResearching);
 
   const hasReasoning = parts.some((part) => part.type === "reasoning");
 
@@ -422,7 +432,7 @@ export function WebResearch({
     <ChainOfThought
       className="w-[min(100%,560px)]"
       data-testid="web-research"
-      onOpenChange={handleOpenChange}
+      onOpenChange={onOpenChange}
       open={open}
     >
       <ChainOfThoughtHeader

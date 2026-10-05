@@ -13,6 +13,11 @@ export type ModelCapabilities = {
   tools: boolean;
   vision: boolean;
   reasoning: boolean;
+  /**
+   * The model's own server searches the web when needed (no website tools
+   * involved), so the Web search toggle doesn't apply to it.
+   */
+  builtInWebSearch?: boolean;
 };
 
 /**
@@ -118,6 +123,12 @@ export const chatModels: ChatModel[] = [
     reasoning: { control: "toggle", defaultLevel: "high" },
   },
   {
+    description: "DZD Learn's own model, with built-in web search",
+    id: "dzd/dzd-learn-ai",
+    name: "DZD Learn AI",
+    provider: "dzd",
+  },
+  {
     description: "Fast and capable model with tool use",
     gatewayOrder: ["bedrock", "deepinfra"],
     id: "deepseek/deepseek-v3.2",
@@ -165,6 +176,21 @@ export async function getCapabilities(): Promise<
       // GLM-4.7-Flash supports function calling and thinking; it is text-only.
       if (model.provider === "zai") {
         return [model.id, { reasoning: true, tools: true, vision: false }];
+      }
+
+      // DZD Learn AI (gpt-oss-20b in a private Hugging Face Space, see
+      // lib/ai/dzd.ts) runs Web_Search / Web_Fetch on its own server. The
+      // website sends it no tools of its own, and it is text-only.
+      if (model.provider === "dzd") {
+        return [
+          model.id,
+          {
+            builtInWebSearch: true,
+            reasoning: false,
+            tools: false,
+            vision: false,
+          },
+        ];
       }
 
       try {
@@ -301,8 +327,8 @@ export async function getModelAvailability(
 ): Promise<ModelAvailability> {
   const model = chatModels.find((item) => item.id === modelId);
 
-  // Z.AI availability is not represented in the AI Gateway endpoint API.
-  if (!model || model.provider === "zai") {
+  // Z.AI and DZD Learn AI are not represented in the AI Gateway endpoint API.
+  if (!model || model.provider === "zai" || model.provider === "dzd") {
     return "unknown";
   }
 

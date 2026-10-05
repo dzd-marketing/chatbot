@@ -8,6 +8,7 @@ import {
   ArrowUpIcon,
   BrainIcon,
   EyeIcon,
+  GlobeIcon,
   LockIcon,
   WrenchIcon,
 } from "lucide-react";
@@ -58,7 +59,7 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { AnimatedPlaceholder } from "./animated-placeholder";
 import { ReasoningDropdown, WebSearchToggle } from "./composer-controls";
-import { PaperclipIcon, StopIcon } from "./icons";
+import { DzdLogoMark, PaperclipIcon, StopIcon } from "./icons";
 import { PreviewAttachment } from "./preview-attachment";
 import {
   type SlashCommand,
@@ -79,6 +80,14 @@ const legalLinkProps = (url: string) =>
   isExternalUrl(url)
     ? { rel: "noopener noreferrer", target: "_blank" as const }
     : {};
+
+// models.dev has no logo for our own model, so show the DZD mark instead.
+function ProviderLogo({ provider }: { provider: string }) {
+  if (provider === "dzd") {
+    return <DzdLogoMark className="size-4" size={16} />;
+  }
+  return <ModelSelectorLogo provider={provider} />;
+}
 
 function PureMultimodalInput({
   chatId,
@@ -785,13 +794,19 @@ function ModelSelectorOption({
       onSelect={handleSelect}
       value={model.id}
     >
-      <ModelSelectorLogo provider={logoProvider} />
+      <ProviderLogo provider={logoProvider} />
       <ModelSelectorName>{model.name}</ModelSelectorName>
       <div className="ml-auto flex items-center gap-2 text-foreground/70">
         {capabilities?.[model.id]?.tools
           ? maybeWithTooltip(
               <WrenchIcon className="size-3.5" />,
               "Supports tool use"
+            )
+          : null}
+        {capabilities?.[model.id]?.builtInWebSearch
+          ? maybeWithTooltip(
+              <GlobeIcon className="size-3.5" />,
+              "Built-in web search"
             )
           : null}
         {capabilities?.[model.id]?.vision
@@ -860,7 +875,7 @@ function PureModelSelectorCompact({
           data-testid="model-selector"
           variant="ghost"
         >
-          {provider ? <ModelSelectorLogo provider={provider} /> : null}
+          {provider ? <ProviderLogo provider={provider} /> : null}
           <ModelSelectorName>{selectedModel.name}</ModelSelectorName>
         </Button>
       </ModelSelectorTrigger>

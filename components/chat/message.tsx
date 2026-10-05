@@ -16,6 +16,7 @@ import {
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
 import { DocumentPreview } from "./document-preview";
+import { DzdActivity } from "./dzd-activity";
 import { FollowUpSuggestions } from "./follow-up-suggestions";
 import { DzdLogoMark } from "./icons";
 import { MessageActions } from "./message-actions";
@@ -129,7 +130,8 @@ const PurePreviewMessage = ({
       (part.type === "reasoning" &&
         "text" in part &&
         part.text?.trim().length > 0) ||
-      part.type.startsWith("tool-")
+      part.type.startsWith("tool-") ||
+      part.type === "data-dzd-activity"
   );
   const isThinking = isAssistant && isLoading && !hasAnyContent;
 
@@ -183,6 +185,16 @@ const PurePreviewMessage = ({
       .slice(lastResearchIndex + 1)
       .some((part) => part.type === "text" && part.text.trim().length > 0);
 
+  // DZD Learn AI's own web research (progress from its server).
+  const dzdActivityIndex =
+    message.parts?.findLastIndex((part) => part.type === "data-dzd-activity") ??
+    -1;
+  const dzdAnswerStarted =
+    dzdActivityIndex !== -1 &&
+    message.parts
+      .slice(dzdActivityIndex + 1)
+      .some((part) => part.type === "text" && part.text.trim().length > 0);
+
   const parts = message.parts?.map((part, index) => {
     const { type } = part;
     const key = `message-${message.id}-part-${index}`;
@@ -194,6 +206,17 @@ const PurePreviewMessage = ({
           isLoading={isLoading}
           key={key}
           parts={researchParts}
+        />
+      ) : null;
+    }
+
+    if (type === "data-dzd-activity") {
+      return index === dzdActivityIndex ? (
+        <DzdActivity
+          answerStarted={dzdAnswerStarted}
+          data={part.data}
+          isLoading={isLoading}
+          key={key}
         />
       ) : null;
     }
@@ -432,7 +455,7 @@ const PurePreviewMessage = ({
       >
         {isAssistant && (
           <div className="flex h-[calc(15px*1.65)] shrink-0 items-center">
-            <DzdLogoMark className="rounded-lg" size={28} title="DZD AI" />
+            <DzdLogoMark size={28} title="DZD AI" />
           </div>
         )}
         {isAssistant ? (
@@ -455,7 +478,7 @@ export const ThinkingMessage = () => (
   >
     <div className="flex items-start gap-3">
       <div className="flex h-[calc(15px*1.65)] shrink-0 items-center">
-        <DzdLogoMark className="rounded-lg" size={28} title="DZD AI" />
+        <DzdLogoMark size={28} title="DZD AI" />
       </div>
 
       <WaitingText />

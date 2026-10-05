@@ -1,6 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { customProvider, gateway } from "ai";
 import { isTestEnvironment } from "../constants";
+import { createDzdModel, type DzdStreamHooks, isDzdModel } from "./dzd";
 import type { ChatModel, ReasoningLevel } from "./models";
 import { titleModel } from "./models";
 
@@ -29,7 +30,13 @@ export const myProvider = isTestEnvironment
     })()
   : null;
 
-export function getLanguageModel(modelId: string) {
+export function getLanguageModel(
+  modelId: string,
+  options: {
+    /** Progress / telemetry callbacks for DZD Learn AI requests. */
+    dzd?: DzdStreamHooks;
+  } = {}
+) {
   if (isTestEnvironment && myProvider) {
     return myProvider.languageModel(modelId);
   }
@@ -41,6 +48,11 @@ export function getLanguageModel(modelId: string) {
 
     const zaiModelId = modelId.slice(ZAI_MODEL_PREFIX.length);
     return zai(zaiModelId);
+  }
+
+  if (isDzdModel(modelId)) {
+    // DZD Learn AI (private Hugging Face Space); see lib/ai/dzd.ts.
+    return createDzdModel(options.dzd);
   }
 
   return gateway.languageModel(modelId);
