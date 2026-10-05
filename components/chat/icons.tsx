@@ -1,3 +1,6 @@
+import Image from "next/image";
+import dzdLearnLogo from "@/public/brand/dzd-learn-logo.png";
+
 export const BotIcon = () => (
   <svg
     height="16"
@@ -51,9 +54,11 @@ export const AttachmentIcon = () => (
 );
 
 /**
- * DZD Learn brand mark: a graduation cap on the DZD Learn emerald tile.
- * Follows the theme tokens: white cap on #047857 (light), near-black cap on
- * #10B981 (dark). Keep in sync with app/icon.svg.
+ * DZD Learn brand mark: the official DZD Learn logo
+ * (public/brand/dzd-learn-logo.png) on a near-black rounded tile, matching
+ * the favicon. The tile keeps the logo's white book pages visible on light
+ * surfaces. Pass `title` when the mark is meaningful on its own (e.g. the
+ * DZD AI avatar); otherwise it is treated as decorative.
  */
 export const DzdLogoMark = ({
   size = 24,
@@ -63,40 +68,29 @@ export const DzdLogoMark = ({
   size?: number;
   className?: string;
   title?: string;
-}) => (
-  <svg
-    aria-hidden={title ? undefined : true}
-    className={className}
-    fill="none"
-    height={size}
-    role={title ? "img" : undefined}
-    viewBox="0 0 32 32"
-    width={size}
-  >
-    {title ? <title>{title}</title> : null}
-    <rect fill="var(--brand, #047857)" height="32" rx="8" width="32" />
-    <path
-      d="M16 7.5 28 13.25 16 19 4 13.25Z"
-      fill="var(--brand-foreground, #FFFFFF)"
-    />
-    <path
-      d="M9.25 16.4v4.85c0 1.95 3.05 3.5 6.75 3.5s6.75-1.55 6.75-3.5V16.4L16 19.6Z"
-      fill="var(--brand-foreground, #FFFFFF)"
-    />
-    <path
-      d="M26 14.3v5.4"
-      stroke="var(--brand-foreground, #FFFFFF)"
-      strokeLinecap="round"
-      strokeWidth="1.6"
-    />
-    <circle
-      cx="26"
-      cy="20.6"
-      fill="var(--brand-foreground, #FFFFFF)"
-      r="1.25"
-    />
-  </svg>
-);
+}) => {
+  const inner = Math.round(size * 0.8);
+  return (
+    <span
+      aria-hidden={title ? undefined : true}
+      className={`inline-flex shrink-0 items-center justify-center bg-[#111111] dark:ring-1 dark:ring-white/10 ${className ?? ""}`}
+      style={{
+        borderRadius: Math.round(size * 0.24),
+        height: size,
+        width: size,
+      }}
+    >
+      <Image
+        alt={title ?? ""}
+        className="object-contain"
+        draggable={false}
+        height={inner}
+        src={dzdLearnLogo}
+        width={inner}
+      />
+    </span>
+  );
+};
 
 /** Mark + "DZD Learn" wordmark. Text is real text for accessibility. */
 export const DzdWordmark = ({

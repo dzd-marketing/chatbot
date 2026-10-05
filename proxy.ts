@@ -48,6 +48,6 @@ export const config = {
 
     // Static metadata assets (icons, social preview images) must stay public
     // so browsers and link-preview crawlers can fetch them without a session.
-    "/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|opengraph-image|twitter-image|sitemap.xml|robots.txt).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|opengraph-image|twitter-image|sitemap.xml|robots.txt).*)",
   ],
 };
