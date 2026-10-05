@@ -56,6 +56,7 @@ import {
 } from "../ai-elements/prompt-input";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { AnimatedPlaceholder } from "./animated-placeholder";
 import { ReasoningDropdown, WebSearchToggle } from "./composer-controls";
 import { PaperclipIcon, StopIcon } from "./icons";
 import { PreviewAttachment } from "./preview-attachment";
@@ -533,17 +534,21 @@ function PureMultimodalInput({
             ))}
           </div>
         )}
-        <PromptInputTextarea
-          className="min-h-24 text-[13px] leading-relaxed px-4 pt-3.5 pb-1.5 placeholder:text-muted-foreground/35"
-          data-testid="multimodal-input"
-          onChange={handleInput}
-          onKeyDown={handleTextareaKeyDown}
-          placeholder={
-            editingMessage ? "Edit your message..." : "Ask DZD AI anything..."
-          }
-          ref={textareaRef}
-          value={input}
-        />
+        <div className="relative flex w-full flex-1 flex-col">
+          <PromptInputTextarea
+            aria-label={editingMessage ? "Edit your message" : "Message DZD AI"}
+            className="min-h-24 w-full px-4 pt-3.5 pb-1.5 text-[14px] leading-relaxed placeholder:text-muted-foreground/45"
+            data-testid="multimodal-input"
+            onChange={handleInput}
+            onKeyDown={handleTextareaKeyDown}
+            placeholder={editingMessage ? "Edit your message..." : ""}
+            ref={textareaRef}
+            value={input}
+          />
+          {!editingMessage && input.length === 0 ? (
+            <AnimatedPlaceholder className="pointer-events-none absolute inset-x-0 top-0 select-none overflow-hidden px-4 pt-3.5 text-[14px] text-muted-foreground/55 leading-relaxed" />
+          ) : null}
+        </div>
         <PromptInputFooter className="px-3 pb-3">
           <PromptInputTools>
             <AttachmentsButton
