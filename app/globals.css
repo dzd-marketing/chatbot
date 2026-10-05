@@ -44,18 +44,41 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* DZD Learn brand tokens */
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-soft: var(--brand-soft);
+  --color-ring-edge: var(--ring-edge);
 }
 
 :root {
   --radius: 0.625rem;
+
+  /*
+   * DZD Learn primary green: #39FF13 === oklch(0.8714 0.2861 141.51)
+   * (round-trip verified). Only ever pair it with near-black text
+   * (~14.6:1 contrast). On light surfaces it is ~1.36:1 against white, so
+   * green *text* and thin focus edges in light mode use --brand-ink /
+   * --ring-edge instead, while fills, halos, and highlights stay #39FF13.
+   */
+  --brand: oklch(0.8714 0.2861 141.51);
+  --brand-foreground: oklch(0.16 0 0);
+  --brand-ink: oklch(
+    0.5056 0.166 140.92
+  ); /* #1A7A00, same hue, 5.5:1 on white */
+  --brand-soft: oklch(0.8714 0.2861 141.51 / 0.16);
+  --ring-edge: oklch(0.2 0 0);
+  --focus-inner: oklch(0.2 0 0);
+
   --background: oklch(0.985 0 0);
   --foreground: oklch(0.12 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.12 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.12 0 0);
-  --primary: oklch(0.12 0 0);
-  --primary-foreground: oklch(0.985 0 0);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-foreground);
   --secondary: oklch(0.965 0 0);
   --secondary-foreground: oklch(0.38 0 0);
   --muted: oklch(0.94 0 0);
@@ -65,7 +88,7 @@
   --destructive: oklch(0.55 0.15 25);
   --border: oklch(0.9 0 0);
   --input: oklch(0.9 0 0);
-  --ring: oklch(0.5 0 0);
+  --ring: var(--brand);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -73,19 +96,20 @@
   --chart-5: oklch(0.769 0.188 70.08);
   --sidebar: oklch(0.97 0 0);
   --sidebar-foreground: oklch(0.38 0 0);
-  --sidebar-primary: oklch(0.12 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-foreground);
   --sidebar-accent: oklch(0.12 0 0 / 0.06);
   --sidebar-accent-foreground: oklch(0.12 0 0);
   --sidebar-border: oklch(0.88 0 0);
-  --sidebar-ring: oklch(0.5 0 0);
+  --sidebar-ring: var(--brand);
 
   --shadow-card: 0 1px 3px oklch(0 0 0 / 0.05), 0 1px 1px oklch(0 0 0 / 0.03);
   --shadow-float:
     0 8px 24px -6px oklch(0 0 0 / 0.1), 0 2px 8px -2px oklch(0 0 0 / 0.04);
   --shadow-composer: 0 1px 2px oklch(0 0 0 / 0.04);
   --shadow-composer-focus:
-    0 0 0 1px oklch(0 0 0 / 0.06), 0 2px 8px -2px oklch(0 0 0 / 0.06);
+    0 0 0 1px var(--ring-edge), 0 0 0 4px oklch(0.8714 0.2861 141.51 / 0.45),
+    0 2px 8px -2px oklch(0 0 0 / 0.06);
   --shadow-inset: inset 0 1px 1px oklch(0 0 0 / 0.03);
   --shadow-glow: 0 0 20px oklch(0 0 0 / 0.08);
 
@@ -95,14 +119,20 @@
 }
 
 .dark {
+  /* On charcoal, #39FF13 itself is readable (~12:1), so ink == brand. */
+  --brand-ink: var(--brand);
+  --brand-soft: oklch(0.8714 0.2861 141.51 / 0.14);
+  --ring-edge: var(--brand);
+  --focus-inner: transparent;
+
   --background: oklch(0.195 0 0);
   --foreground: oklch(0.94 0 0);
   --card: oklch(0.225 0 0);
   --card-foreground: oklch(0.94 0 0);
   --popover: oklch(0.225 0 0);
   --popover-foreground: oklch(0.94 0 0);
-  --primary: oklch(0.94 0 0);
-  --primary-foreground: oklch(0.195 0 0);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-foreground);
   --secondary: oklch(0.26 0 0);
   --secondary-foreground: oklch(0.75 0 0);
   --muted: oklch(0.165 0 0);
@@ -112,7 +142,7 @@
   --destructive: oklch(0.7 0.15 25);
   --border: oklch(0.27 0 0);
   --input: oklch(0.27 0 0);
-  --ring: oklch(0.45 0 0);
+  --ring: var(--brand);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
@@ -120,12 +150,12 @@
   --chart-5: oklch(0.645 0.246 16.439);
   --sidebar: oklch(0.175 0 0);
   --sidebar-foreground: oklch(0.78 0 0);
-  --sidebar-primary: oklch(0.94 0 0);
-  --sidebar-primary-foreground: oklch(0.195 0 0);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-foreground);
   --sidebar-accent: oklch(0.94 0 0 / 0.06);
   --sidebar-accent-foreground: oklch(0.94 0 0);
   --sidebar-border: oklch(0.25 0 0);
-  --sidebar-ring: oklch(0.45 0 0);
+  --sidebar-ring: var(--brand);
 
   --shadow-card:
     inset 0 1px 0 oklch(1 0 0 / 0.04), 0 1px 2px oklch(0 0 0 / 0.2),
@@ -136,8 +166,9 @@
   --shadow-composer:
     0 1px 3px oklch(0 0 0 / 0.2), inset 0 1px 0 oklch(1 0 0 / 0.03);
   --shadow-composer-focus:
-    0 0 0 1px oklch(1 0 0 / 0.1), 0 4px 16px -4px oklch(0 0 0 / 0.3),
-    inset 0 1px 0 oklch(1 0 0 / 0.04);
+    0 0 0 1px oklch(0.8714 0.2861 141.51 / 0.7),
+    0 0 0 4px oklch(0.8714 0.2861 141.51 / 0.18),
+    0 4px 16px -4px oklch(0 0 0 / 0.3), inset 0 1px 0 oklch(1 0 0 / 0.04);
 }
 
 @layer base {
@@ -188,12 +219,35 @@
   }
 }
 
-button:focus-visible,
+/* Text fields show focus via their border/ring tokens (--ring-edge, --ring). */
 select:focus-visible,
-[role="button"]:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
   outline: none;
+}
+
+/*
+ * Branded, high-contrast keyboard focus indicator for interactive controls:
+ * a #39FF13 outline, plus a charcoal inner edge in light mode so the
+ * indicator keeps >3:1 contrast against white surfaces.
+ */
+:is(
+  a[href],
+  button,
+  [role="button"],
+  [role="tab"],
+  [role="switch"],
+  [role="checkbox"],
+  summary
+):not([role="menuitem"], [role="option"]):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--focus-inner);
+}
+
+::selection {
+  color: var(--foreground);
+  background: oklch(0.8714 0.2861 141.51 / 0.35);
 }
 
 @utility text-balance {
@@ -324,10 +378,10 @@ textarea:focus-visible {
 @keyframes glow-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 oklch(0.55 0.12 250 / 0%);
+    box-shadow: 0 0 0 0 oklch(0.8714 0.2861 141.51 / 0%);
   }
   50% {
-    box-shadow: 0 0 0 3px oklch(0.55 0.12 250 / 8%);
+    box-shadow: 0 0 0 3px oklch(0.8714 0.2861 141.51 / 20%);
   }
 }
 
@@ -403,7 +457,7 @@ textarea:focus-visible {
 .ͼo.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground,
 .ͼo.cm-selectionBackground,
 .ͼo.cm-content::selection {
-  background: oklch(0.55 0.12 250 / 0.15) !important;
+  background: oklch(0.8714 0.2861 141.51 / 0.25) !important;
 }
 
 .dark
@@ -413,7 +467,7 @@ textarea:focus-visible {
   .cm-selectionBackground,
 .dark .ͼo.cm-selectionBackground,
 .dark .ͼo.cm-content::selection {
-  background: oklch(0.55 0.12 250 / 0.2) !important;
+  background: oklch(0.8714 0.2861 141.51 / 0.2) !important;
 }
 
 .cm-activeLine {
@@ -438,20 +492,20 @@ textarea:focus-visible {
 }
 
 .cm-cursor {
-  border-left-color: oklch(0.55 0.12 250) !important;
+  border-left-color: var(--brand-ink) !important;
   border-left-width: 2px !important;
 }
 
 .cm-matchingBracket {
-  outline: 1px solid oklch(0.55 0.12 250 / 0.3);
-  background: oklch(0.55 0.12 250 / 0.12) !important;
+  outline: 1px solid oklch(0.8714 0.2861 141.51 / 0.6);
+  background: oklch(0.8714 0.2861 141.51 / 0.18) !important;
   border-radius: 2px;
 }
 
 .suggestion-highlight {
   -webkit-user-select: none;
   user-select: none;
-  @apply cursor-pointer rounded-sm bg-blue-200 transition-colors hover:bg-blue-300 dark:bg-blue-500/40 dark:text-blue-50 dark:hover:bg-blue-400/50;
+  @apply cursor-pointer rounded-sm bg-brand/30 transition-colors hover:bg-brand/50 dark:bg-brand/20 dark:text-foreground dark:hover:bg-brand/30;
 }
 
 @layer base {

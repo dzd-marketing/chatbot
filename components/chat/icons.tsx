@@ -50,21 +50,62 @@ export const AttachmentIcon = () => (
   </svg>
 );
 
-export const VercelIcon = ({ size = 17 }) => (
+/**
+ * DZD Learn brand mark: a graduation cap on the DZD Learn green (#39FF13).
+ * The cap is near-black so it stays legible on the vivid green in both themes.
+ * Keep in sync with app/icon.svg.
+ */
+export const DzdLogoMark = ({
+  size = 24,
+  className,
+  title,
+}: {
+  size?: number;
+  className?: string;
+  title?: string;
+}) => (
   <svg
+    aria-hidden={title ? undefined : true}
+    className={className}
+    fill="none"
     height={size}
-    strokeLinejoin="round"
-    style={{ color: "currentcolor" }}
-    viewBox="0 0 16 16"
+    role={title ? "img" : undefined}
+    viewBox="0 0 32 32"
     width={size}
   >
+    {title ? <title>{title}</title> : null}
+    <rect fill="var(--brand, #39FF13)" height="32" rx="8" width="32" />
+    <path d="M16 7.5 28 13.25 16 19 4 13.25Z" fill="#0B0B0B" />
     <path
-      clipRule="evenodd"
-      d="M8 1L16 15H0L8 1Z"
-      fill="currentColor"
-      fillRule="evenodd"
+      d="M9.25 16.4v4.85c0 1.95 3.05 3.5 6.75 3.5s6.75-1.55 6.75-3.5V16.4L16 19.6Z"
+      fill="#0B0B0B"
     />
+    <path
+      d="M26 14.3v5.4"
+      stroke="#0B0B0B"
+      strokeLinecap="round"
+      strokeWidth="1.6"
+    />
+    <circle cx="26" cy="20.6" fill="#0B0B0B" r="1.25" />
   </svg>
+);
+
+/** Mark + "DZD Learn" wordmark. Text is real text for accessibility. */
+export const DzdWordmark = ({
+  size = 24,
+  className,
+}: {
+  size?: number;
+  className?: string;
+}) => (
+  <span
+    className={`inline-flex items-center gap-2 font-semibold tracking-tight ${className ?? ""}`}
+  >
+    <DzdLogoMark size={size} />
+    <span className="whitespace-nowrap text-foreground">
+      DZD <span className="text-brand-ink">Learn</span>
+    </span>
+  </span>
 );
 
 export const GitIcon = () => (

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { memo } from "react";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
-import { VercelIcon } from "./icons";
+import { DzdWordmark } from "./icons";
 import { VisibilitySelector, type VisibilityType } from "./visibility-selector";
 
 function PureChatHeader({
@@ -26,6 +26,7 @@ function PureChatHeader({
   return (
     <header className="sticky top-0 flex h-14 items-center gap-2 bg-sidebar px-3">
       <Button
+        aria-label="Open sidebar"
         className="md:hidden"
         onClick={toggleSidebar}
         size="icon-sm"
@@ -35,12 +36,11 @@ function PureChatHeader({
       </Button>
 
       <Link
-        className="flex size-8 items-center justify-center rounded-lg md:hidden"
-        href="https://vercel.com/templates/next.js/chatbot"
-        rel="noopener noreferrer"
-        target="_blank"
+        aria-label="DZD Learn home"
+        className="flex items-center rounded-lg px-1 md:hidden"
+        href="/"
       >
-        <VercelIcon size={14} />
+        <DzdWordmark className="text-[14px]" size={22} />
       </Link>
 
       {!isReadonly && (
@@ -50,19 +50,13 @@ function PureChatHeader({
         />
       )}
 
-      <Button
-        asChild
-        className="hidden rounded-lg bg-foreground px-4 text-background hover:bg-foreground/90 md:ml-auto md:flex"
-      >
-        <Link
-          href="https://vercel.com/templates/next.js/chatbot"
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          <VercelIcon size={16} />
-          Deploy with Vercel
-        </Link>
-      </Button>
+      <span className="hidden items-center gap-1.5 text-[12px] text-muted-foreground md:ml-auto md:flex">
+        <span
+          aria-hidden="true"
+          className="size-1.5 rounded-full bg-brand ring-2 ring-brand/25"
+        />
+        DZD AI · Study assistant
+      </span>
     </header>
   );
 }

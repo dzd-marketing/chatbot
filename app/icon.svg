@@ -1,0 +1,16 @@
+<svg fill="none" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <title>DZD Learn</title>
+  <rect fill="#39FF13" height="32" rx="8" width="32" />
+  <path d="M16 7.5 28 13.25 16 19 4 13.25Z" fill="#0B0B0B" />
+  <path
+    d="M9.25 16.4v4.85c0 1.95 3.05 3.5 6.75 3.5s6.75-1.55 6.75-3.5V16.4L16 19.6Z"
+    fill="#0B0B0B"
+  />
+  <path
+    d="M26 14.3v5.4"
+    stroke="#0B0B0B"
+    stroke-linecap="round"
+    stroke-width="1.6"
+  />
+  <circle cx="26" cy="20.6" fill="#0B0B0B" r="1.25" />
+</svg>

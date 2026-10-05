@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  MessageSquareIcon,
-  PanelLeftIcon,
-  PenSquareIcon,
-  TrashIcon,
-} from "lucide-react";
+import { PanelLeftIcon, PenSquareIcon, TrashIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { User } from "next-auth";
@@ -13,6 +8,7 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
+import { DzdLogoMark } from "@/components/chat/icons";
 import {
   getChatHistoryPaginationKey,
   SidebarHistory,
@@ -91,10 +87,14 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                 <SidebarMenuButton
                   asChild
                   className="size-8 !px-0 items-center justify-center group-data-[collapsible=icon]:group-hover/logo:opacity-0"
-                  tooltip="Chatbot"
+                  tooltip="DZD Learn"
                 >
-                  <Link href="/" onClick={closeMobile}>
-                    <MessageSquareIcon className="size-4 text-sidebar-foreground/50" />
+                  <Link
+                    aria-label="DZD Learn home"
+                    href="/"
+                    onClick={closeMobile}
+                  >
+                    <DzdLogoMark size={24} />
                   </Link>
                 </SidebarMenuButton>
                 <Tooltip>
@@ -111,6 +111,19 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                   </TooltipContent>
                 </Tooltip>
               </div>
+              <Link
+                className="mr-auto ml-2 flex min-w-0 flex-col rounded-md leading-tight group-data-[collapsible=icon]:hidden"
+                href="/"
+                onClick={closeMobile}
+                tabIndex={-1}
+              >
+                <span className="truncate font-semibold text-[14px] text-sidebar-foreground tracking-tight">
+                  DZD <span className="text-brand-ink">Learn</span>
+                </span>
+                <span className="truncate text-[11px] text-sidebar-foreground/60">
+                  with DZD AI
+                </span>
+              </Link>
               <div className="group-data-[collapsible=icon]:hidden">
                 <SidebarTrigger className="text-sidebar-foreground/60 transition-colors duration-150 hover:text-sidebar-foreground" />
               </div>
@@ -123,7 +136,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    className="h-8 rounded-lg border border-sidebar-border text-[13px] text-sidebar-foreground/70 transition-colors duration-150 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                    className="h-8 rounded-lg border border-sidebar-border text-[13px] text-sidebar-foreground/80 transition-colors duration-150 hover:border-brand hover:bg-brand-soft hover:text-sidebar-foreground [&>svg]:text-brand-ink"
                     onClick={handleNewChat}
                     tooltip="New Chat"
                   >
