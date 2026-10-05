@@ -44,6 +44,7 @@ import {
   DEFAULT_CHAT_MODEL,
   type ModelCapabilities,
 } from "@/lib/ai/models";
+import { prepareImageForUpload } from "@/lib/image-compress";
 import { isExternalUrl, PRIVACY_URL, TERMS_URL } from "@/lib/legal";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -285,7 +286,18 @@ function PureMultimodalInput({
     chatId,
   ]);
 
-  const uploadFile = useCallback(async (file: File) => {
+  const uploadFile = useCallback(async (original: File) => {
+    let file: File;
+    try {
+      // Smaller, faster uploads; also converts WebP and similar to JPEG.
+      file = await prepareImageForUpload(original);
+    } catch {
+      toast.error(
+        `Couldn't open "${original.name}". Please use a JPEG or PNG image.`
+      );
+      return;
+    }
+
     const formData = new FormData();
     formData.append("file", file);
 
@@ -308,8 +320,10 @@ function PureMultimodalInput({
           url,
         };
       }
-      const { error } = await response.json();
-      toast.error(error);
+      const { error } = await response
+        .json()
+        .catch(() => ({ error: undefined }));
+      toast.error(error || "Couldn't upload the image. Please try again.");
     } catch {
       toast.error("Failed to upload file, please try again!");
     }
@@ -318,6 +332,8 @@ function PureMultimodalInput({
   const handleFileChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(event.target.files || []);
+      // Allow choosing the same file again later.
+      event.target.value = "";
 
       setUploadQueue(files.map((file) => file.name));
 
@@ -492,7 +508,7 @@ function PureMultimodalInput({
       ) : null}
 
       <input
-        accept="image/jpeg,image/png"
+        accept="image/*"
         className="pointer-events-none fixed -top-4 -left-4 size-0.5 opacity-0"
         multiple
         onChange={handleFileChange}
@@ -734,7 +750,7 @@ function PureAttachmentsButton({
       </TooltipTrigger>
       <TooltipContent side="top" sideOffset={8}>
         {hasVision
-          ? "Attach images (JPEG or PNG, up to 5 MB)"
+          ? "Attach images"
           : `${model?.name ?? "This model"} can't read images. Choose a model with the eye icon.`}
       </TooltipContent>
     </Tooltip>
