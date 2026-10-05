@@ -586,3 +586,83 @@ textarea:focus-visible {
     animation: none;
   }
 }
+
+/*
+ * Message input bar: rainbow border that runs around the box twice, fades
+ * out, rests for 3s and comes back. One 6s cycle:
+ *   0.0s–0.3s  fade in (already moving)
+ *   0.0s–3.0s  two full laps, 1.5s each
+ *   2.6s–3.0s  fade out
+ *   3.0s–6.0s  hidden (the faint static border shows underneath)
+ * The ring is a masked 1px pseudo-element on the <form>, so it sits exactly
+ * over the inner InputGroup border and isn't clipped by its overflow-hidden.
+ */
+@property --dzd-border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.dzd-gradient-border {
+  --dzd-border-width: 1px;
+  position: relative;
+}
+
+.dzd-gradient-border::before {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: var(--dzd-border-width);
+  pointer-events: none;
+  content: "";
+  /* gradient: https://www.gradientmagic.com/collection/rainbowstandard */
+  background: conic-gradient(
+    from var(--dzd-border-angle),
+    hsl(224 85% 66%),
+    hsl(269 85% 66%),
+    hsl(314 85% 66%),
+    hsl(359 85% 66%),
+    hsl(44 85% 66%),
+    hsl(89 85% 66%),
+    hsl(134 85% 66%),
+    hsl(179 85% 66%),
+    hsl(224 85% 66%)
+  );
+  border-radius: inherit;
+  opacity: 0;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  animation: dzd-border-spin 6s linear infinite;
+}
+
+@keyframes dzd-border-spin {
+  0% {
+    --dzd-border-angle: 0deg;
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  43.333% {
+    opacity: 1;
+  }
+  50% {
+    --dzd-border-angle: 720deg;
+    opacity: 0;
+  }
+  100% {
+    --dzd-border-angle: 720deg;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dzd-gradient-border::before {
+    animation: none;
+  }
+}
