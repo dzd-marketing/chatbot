@@ -13,7 +13,7 @@ export const Greeting = () => (
     </motion.div>
     <motion.h1
       animate={{ opacity: 1, y: 0 }}
-      className="text-balance text-center font-semibold text-2xl tracking-tight text-foreground md:text-3xl"
+      className="text-balance text-center font-semibold text-3xl leading-tight tracking-tight text-foreground sm:text-4xl md:text-[2.75rem]"
       initial={{ opacity: 0, y: 10 }}
       transition={{ delay: 0.35, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
     >

@@ -503,7 +503,7 @@ function PureMultimodalInput({
       </div>
 
       <PromptInput
-        className="dzd-gradient-border rounded-2xl [&>div]:rounded-2xl [&>div]:border [&>div]:border-border/30 [&>div]:bg-card/70 [&>div]:shadow-[var(--shadow-composer)] [&>div]:transition-shadow [&>div]:duration-300 [&>div]:focus-within:shadow-[var(--shadow-composer-focus)]"
+        className="dzd-gradient-border rounded-2xl [&>div]:rounded-2xl [&>div]:border [&>div]:border-border/30 [&>div]:bg-card/70 [&>div]:shadow-[var(--shadow-composer)] [&>div]:has-[[data-slot=input-group-control]:focus-visible]:border-border/30 [&>div]:has-[[data-slot=input-group-control]:focus-visible]:ring-0"
         onSubmit={handlePromptSubmit}
       >
         {(attachments.length > 0 || uploadQueue.length > 0) && (

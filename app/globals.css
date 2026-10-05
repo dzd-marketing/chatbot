@@ -830,7 +830,8 @@ textarea:focus-visible {
 
 /*
  * Welcome screen ambient glow (WelcomeBackdrop in greeting.tsx). Warm light
- * in the orb's colours pooled behind the orb, heading and input bar. It
+ * in the orb's colours pooled behind the heading and input bar (not behind
+ * the orb, which has its own shadow glow). It
  * runs the orb's own hue-shift keyframes on the same 6s clock, so the whole
  * welcome area changes colour together with the orb. Anchored to the welcome
  * overlay (inset 0) so it never adds scroll overflow; z-index -1 keeps it
@@ -849,12 +850,7 @@ textarea:focus-visible {
   inset: 0;
   background:
     radial-gradient(
-      ellipse 260px 220px at 50% calc(50% - 220px),
-      #ffbf4866,
-      transparent 70%
-    ),
-    radial-gradient(
-      ellipse 460px 280px at calc(50% - 200px) calc(50% - 40px),
+      ellipse 460px 260px at calc(50% - 200px) calc(50% + 10px),
       #ffbf4733,
       transparent 72%
     ),
