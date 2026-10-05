@@ -13,6 +13,7 @@ import { checkBotId } from "botid/server";
 import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
 import { auth, type UserType } from "@/app/(auth)/auth";
+import { findChatModel, getAllCapabilities } from "@/lib/ai/available-models";
 import {
   DZD_HISTORY_MESSAGES,
   type DzdStreamHooks,
@@ -21,13 +22,12 @@ import {
 } from "@/lib/ai/dzd";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
 import {
-  allowedModelIds,
   chatModels,
   DEFAULT_CHAT_MODEL,
-  getCapabilities,
   getModelAvailability,
   resolveReasoningLevel,
 } from "@/lib/ai/models";
+import { isNvidiaModel, nvidiaErrorMessage } from "@/lib/ai/nvidia";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import {
   getLanguageModel,
@@ -131,9 +131,9 @@ export async function POST(request: Request) {
       return new ChatbotError("unauthorized:chat").toResponse();
     }
 
-    const chatModel = allowedModelIds.has(selectedChatModel)
-      ? selectedChatModel
-      : DEFAULT_CHAT_MODEL;
+    // Curated models plus NVIDIA models discovered at runtime.
+    const requestedModel = await findChatModel(selectedChatModel);
+    const chatModel = requestedModel ? selectedChatModel : DEFAULT_CHAT_MODEL;
 
     await checkIpRateLimit(ipAddress(request));
 
@@ -231,8 +231,9 @@ export async function POST(request: Request) {
       });
     }
 
-    const modelConfig = chatModels.find((m) => m.id === chatModel);
-    const modelCapabilities = await getCapabilities();
+    const modelConfig =
+      requestedModel ?? chatModels.find((m) => m.id === chatModel);
+    const modelCapabilities = await getAllCapabilities();
     const capabilities = modelCapabilities[chatModel];
     const isReasoningModel = capabilities?.reasoning === true;
     const supportsTools = capabilities?.tools === true;
@@ -428,7 +429,11 @@ export async function POST(request: Request) {
 
         dataStream.merge(
           toUIMessageStream({
-            sendReasoning: isReasoningModel && reasoningLevel !== "off",
+            // NVIDIA models have no reasoning control, but if one streams its
+            // thinking, show it.
+            sendReasoning:
+              (isReasoningModel && reasoningLevel !== "off") ||
+              isNvidiaModel(chatModel),
             stream: result.stream,
           })
         );
@@ -551,6 +556,9 @@ export async function POST(request: Request) {
           )
         ) {
           return "AI Gateway requires a valid credit card on file to service requests. Please visit https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card to add a card and unlock your free credits.";
+        }
+        if (isNvidiaModel(chatModel)) {
+          return nvidiaErrorMessage(error);
         }
         if (isDzd) {
           if (

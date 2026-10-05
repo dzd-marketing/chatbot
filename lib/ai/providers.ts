@@ -4,6 +4,7 @@ import { isTestEnvironment } from "../constants";
 import { createDzdModel, type DzdStreamHooks, isDzdModel } from "./dzd";
 import type { ChatModel, ReasoningLevel } from "./models";
 import { titleModel } from "./models";
+import { createNvidiaModel, isNvidiaModel } from "./nvidia";
 
 const ZAI_MODEL_PREFIX = "zai/";
 
@@ -53,6 +54,11 @@ export function getLanguageModel(
   if (isDzdModel(modelId)) {
     // DZD Learn AI (private Hugging Face Space); see lib/ai/dzd.ts.
     return createDzdModel(options.dzd);
+  }
+
+  if (isNvidiaModel(modelId)) {
+    // NVIDIA API catalog; see lib/ai/nvidia.ts.
+    return createNvidiaModel(modelId);
   }
 
   return gateway.languageModel(modelId);

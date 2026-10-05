@@ -22,6 +22,7 @@ import {
   type SetStateAction,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -791,11 +792,17 @@ function ModelSelectorOption({
           ? "data-[selected=true]:bg-muted data-[selected=true]:text-foreground"
           : "cursor-not-allowed opacity-40 data-[selected=true]:bg-transparent data-[selected=true]:opacity-60 data-[selected=true]:ring-1 data-[selected=true]:ring-muted-foreground/30 data-[selected=true]:ring-inset"
       )}
+      keywords={[model.name, model.provider]}
       onSelect={handleSelect}
       value={model.id}
     >
       <ProviderLogo provider={logoProvider} />
       <ModelSelectorName>{model.name}</ModelSelectorName>
+      {model.provider === "nvidia" ? (
+        <span className="shrink-0 rounded border border-border/50 px-1 py-px font-medium text-[9px] text-muted-foreground uppercase tracking-wide">
+          NVIDIA
+        </span>
+      ) : null}
       <div className="ml-auto flex items-center gap-2 text-foreground/70">
         {capabilities?.[model.id]?.tools
           ? maybeWithTooltip(
@@ -859,12 +866,23 @@ function PureModelSelectorCompact({
   const capabilities: Record<string, ModelCapabilities> | undefined =
     modelsData?.capabilities ?? modelsData;
   const dynamicModels: ChatModel[] | undefined = modelsData?.models;
-  const activeModels = dynamicModels ?? chatModels;
+  // Selectable models: the curated list plus NVIDIA models discovered by
+  // the server (/api/models "extraModels").
+  const availableModels = useMemo(() => {
+    const extra: ChatModel[] = Array.isArray(modelsData?.extraModels)
+      ? modelsData.extraModels
+      : [];
+    const curatedIds = new Set(chatModels.map((m) => m.id));
+    return [...chatModels, ...extra.filter((m) => !curatedIds.has(m.id))];
+  }, [modelsData]);
+  const lookupModels = dynamicModels
+    ? [...availableModels, ...dynamicModels]
+    : availableModels;
 
   const selectedModel =
-    activeModels.find((m: ChatModel) => m.id === selectedModelId) ??
-    activeModels.find((m: ChatModel) => m.id === DEFAULT_CHAT_MODEL) ??
-    activeModels[0];
+    lookupModels.find((m: ChatModel) => m.id === selectedModelId) ??
+    lookupModels.find((m: ChatModel) => m.id === DEFAULT_CHAT_MODEL) ??
+    lookupModels[0];
   const [provider] = selectedModel.id.split("/");
 
   return (
@@ -883,13 +901,20 @@ function PureModelSelectorCompact({
         <ModelSelectorInput placeholder="Search models..." />
         <ModelSelectorList>
           {(() => {
-            const curatedIds = new Set(chatModels.map((m) => m.id));
+            const curatedIds = new Set(availableModels.map((m) => m.id));
+            // One alphabetical list of everything the student can pick.
+            const sortedAvailable = [...availableModels].sort((a, b) =>
+              a.name.localeCompare(b.name, undefined, {
+                numeric: true,
+                sensitivity: "base",
+              })
+            );
             const allModels = dynamicModels
               ? [
-                  ...chatModels,
+                  ...sortedAvailable,
                   ...dynamicModels.filter((m) => !curatedIds.has(m.id)),
                 ]
-              : chatModels;
+              : sortedAvailable;
 
             const grouped: Record<
               string,

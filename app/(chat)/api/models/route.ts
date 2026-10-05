@@ -1,11 +1,18 @@
-import { getAllGatewayModels, getCapabilities, isDemo } from "@/lib/ai/models";
+import { getAllCapabilities } from "@/lib/ai/available-models";
+import { getAllGatewayModels, isDemo } from "@/lib/ai/models";
+import { getNvidiaModels } from "@/lib/ai/nvidia";
 
 export async function GET() {
+  // NVIDIA's model list can change, so browsers re-check hourly.
   const headers = {
-    "Cache-Control": "public, max-age=86400, s-maxage=86400",
+    "Cache-Control":
+      "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
   };
 
-  const curatedCapabilities = await getCapabilities();
+  const [curatedCapabilities, extraModels] = await Promise.all([
+    getAllCapabilities(),
+    getNvidiaModels(),
+  ]);
 
   if (isDemo) {
     const models = await getAllGatewayModels();
@@ -16,5 +23,9 @@ export async function GET() {
     return Response.json({ capabilities, models }, { headers });
   }
 
-  return Response.json(curatedCapabilities, { headers });
+  // extraModels: selectable models discovered at runtime (NVIDIA).
+  return Response.json(
+    { capabilities: curatedCapabilities, extraModels },
+    { headers }
+  );
 }
