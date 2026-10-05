@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { Artifact } from "./artifact";
 import { ChatHeader } from "./chat-header";
 import { DataStreamHandler } from "./data-stream-handler";
+import { Greeting, WelcomeBackdrop } from "./greeting";
 import { submitEditedMessage } from "./message-editor";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
@@ -47,6 +48,8 @@ export function ChatShell() {
     showCreditCardAlert,
     setShowCreditCardAlert,
   } = useActiveChat();
+
+  const showWelcome = messages.length === 0 && !isLoading;
 
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(
     null
@@ -141,29 +144,53 @@ export function ChatShell() {
               votes={votes}
             />
 
-            <div className="sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 bg-background px-2 pb-3 md:px-4 md:pb-4">
-              {!isReadonly && (
-                <MultimodalInput
-                  attachments={attachments}
-                  chatId={chatId}
-                  editingMessage={editingMessage}
-                  input={input}
-                  isLoading={isLoading}
-                  messages={messages}
-                  onCancelEdit={handleCancelEdit}
-                  onModelChange={setCurrentModelId}
-                  selectedModelId={currentModelId}
-                  selectedVisibilityType={visibilityType}
-                  sendMessage={
-                    editingMessage ? handleSendEditedMessage : sendMessage
-                  }
-                  setAttachments={setAttachments}
-                  setInput={setInput}
-                  setMessages={setMessages}
-                  status={status}
-                  stop={stop}
-                />
+            {/*
+              Empty chat: this wrapper becomes the centred welcome screen
+              (orb, heading, input, legal line, starters). Once the chat
+              has messages it is the sticky bottom input bar again. The
+              element tree is the same in both modes, so MultimodalInput
+              keeps its state (typed text, attachments) across the switch.
+            */}
+            <div
+              className={cn(
+                showWelcome
+                  ? "absolute inset-0 z-10 flex flex-col items-center overflow-y-auto overflow-x-hidden px-3 py-8 md:px-6"
+                  : "sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 bg-background px-2 pb-3 md:px-4 md:pb-4"
               )}
+              data-testid={showWelcome ? "welcome-screen" : undefined}
+            >
+              <div
+                className={cn(
+                  showWelcome
+                    ? "my-auto flex w-full max-w-3xl flex-col items-center gap-7"
+                    : "contents"
+                )}
+              >
+                {showWelcome ? <WelcomeBackdrop /> : null}
+                {showWelcome ? <Greeting /> : null}
+                {!isReadonly && (
+                  <MultimodalInput
+                    attachments={attachments}
+                    chatId={chatId}
+                    editingMessage={editingMessage}
+                    input={input}
+                    isLoading={isLoading}
+                    messages={messages}
+                    onCancelEdit={handleCancelEdit}
+                    onModelChange={setCurrentModelId}
+                    selectedModelId={currentModelId}
+                    selectedVisibilityType={visibilityType}
+                    sendMessage={
+                      editingMessage ? handleSendEditedMessage : sendMessage
+                    }
+                    setAttachments={setAttachments}
+                    setInput={setInput}
+                    setMessages={setMessages}
+                    status={status}
+                    stop={stop}
+                  />
+                )}
+              </div>
             </div>
           </div>
         </div>

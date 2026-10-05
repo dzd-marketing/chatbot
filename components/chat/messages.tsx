@@ -6,7 +6,6 @@ import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useDataStream } from "./data-stream-provider";
-import { Greeting } from "./greeting";
 import { PreviewMessage, ThinkingMessage } from "./message";
 
 type MessagesProps = {
@@ -34,7 +33,7 @@ function PureMessages({
   regenerate,
   isReadonly,
   isArtifactVisible,
-  isLoading,
+  isLoading: _isLoading,
   selectedModelId: _selectedModelId,
   onEditMessage,
 }: MessagesProps) {
@@ -65,11 +64,6 @@ function PureMessages({
 
   return (
     <div className="relative flex-1 bg-background">
-      {messages.length === 0 && !isLoading && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          <Greeting />
-        </div>
-      )}
       <div
         className={cn(
           "absolute inset-0 touch-pan-y overflow-y-auto",

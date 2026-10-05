@@ -3,6 +3,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import equal from "fast-deep-equal";
+import { motion } from "framer-motion";
 import {
   ArrowUpIcon,
   BrainIcon,
@@ -455,6 +456,10 @@ function PureMultimodalInput({
     ]
   );
 
+  // Empty chat: the input sits in the centred welcome column, followed by
+  // the legal line and the starter suggestions.
+  const isWelcome = !editingMessage && !isLoading && messages.length === 0;
+
   return (
     <div className={cn("relative flex w-full flex-col gap-4", className)}>
       {editingMessage && onCancelEdit ? (
@@ -469,18 +474,6 @@ function PureMultimodalInput({
           </button>
         </div>
       ) : null}
-
-      {!editingMessage &&
-        !isLoading &&
-        messages.length === 0 &&
-        attachments.length === 0 &&
-        uploadQueue.length === 0 && (
-          <SuggestedActions
-            chatId={chatId}
-            selectedVisibilityType={selectedVisibilityType}
-            sendMessage={sendMessage}
-          />
-        )}
 
       <input
         className="pointer-events-none fixed -top-4 -left-4 size-0.5 opacity-0"
@@ -579,6 +572,44 @@ function PureMultimodalInput({
           )}
         </PromptInputFooter>
       </PromptInput>
+
+      {isWelcome ? (
+        <motion.p
+          animate={{ opacity: 1 }}
+          className="-mt-1 text-balance text-center text-[11.5px] text-muted-foreground/80 leading-relaxed"
+          data-testid="welcome-legal"
+          initial={{ opacity: 0 }}
+          transition={{ delay: 0.5, duration: 0.5 }}
+        >
+          By using DZD Learn AI, you agree to our{" "}
+          <a
+            className="font-medium text-foreground/80 underline decoration-foreground/30 underline-offset-[3px] transition-colors hover:text-foreground hover:decoration-foreground/70"
+            href="https://proton.me/lumo/terms"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Terms
+          </a>{" "}
+          and{" "}
+          <a
+            className="font-medium text-foreground/80 underline decoration-foreground/30 underline-offset-[3px] transition-colors hover:text-foreground hover:decoration-foreground/70"
+            href="https://proton.me/lumo/privacy-policy"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Privacy Policy
+          </a>
+          .
+        </motion.p>
+      ) : null}
+
+      {isWelcome && attachments.length === 0 && uploadQueue.length === 0 ? (
+        <SuggestedActions
+          chatId={chatId}
+          selectedVisibilityType={selectedVisibilityType}
+          sendMessage={sendMessage}
+        />
+      ) : null}
     </div>
   );
 }

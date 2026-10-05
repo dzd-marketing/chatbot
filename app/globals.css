@@ -827,3 +827,71 @@ textarea:focus-visible {
     animation: none;
   }
 }
+
+/*
+ * Welcome screen ambient glow (WelcomeBackdrop in greeting.tsx). Warm light
+ * in the orb's colours pooled behind the orb, heading and input bar. It
+ * runs the orb's own hue-shift keyframes on the same 6s clock, so the whole
+ * welcome area changes colour together with the orb. Anchored to the welcome
+ * overlay (inset 0) so it never adds scroll overflow; z-index -1 keeps it
+ * behind the content inside the overlay's stacking context.
+ */
+.dzd-welcome-glow {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.dzd-welcome-glow-layer {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse 260px 220px at 50% calc(50% - 220px),
+      #ffbf4866,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 460px 280px at calc(50% - 200px) calc(50% - 40px),
+      #ffbf4733,
+      transparent 72%
+    ),
+    radial-gradient(
+      ellipse 480px 300px at calc(50% + 210px) calc(50% + 20px),
+      #be4a1d3d,
+      transparent 72%
+    ),
+    radial-gradient(
+      ellipse 680px 240px at 50% calc(50% + 190px),
+      #be4a1d1f,
+      transparent 75%
+    );
+  opacity: 0.75;
+  transform-origin: 50% 40%;
+  animation:
+    dzd-loader-colorize 6s ease-in-out infinite,
+    dzd-welcome-breathe 6s ease-in-out infinite;
+  will-change: filter, transform;
+}
+
+.dark .dzd-welcome-glow-layer {
+  opacity: 1;
+}
+
+@keyframes dzd-welcome-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dzd-welcome-glow-layer {
+    animation: none;
+  }
+}
