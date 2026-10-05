@@ -20,7 +20,6 @@ import {
 import {
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -169,8 +168,8 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
     return (
       <SidebarGroup className="group-data-[collapsible=icon]:hidden">
         <SidebarGroupContent>
-          <div className="flex w-full flex-row items-center justify-center gap-2 px-2 text-[13px] text-sidebar-foreground/60">
-            Login to save and revisit previous chats!
+          <div className="px-3 py-8 text-center text-[12.5px] text-sidebar-foreground/80 leading-relaxed">
+            Log in to save and revisit your chats.
           </div>
         </SidebarGroupContent>
       </SidebarGroup>
@@ -180,14 +179,11 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
   if (isLoading) {
     return (
       <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-        <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/70">
-          History
-        </SidebarGroupLabel>
         <SidebarGroupContent>
-          <div className="flex flex-col gap-0.5 px-1">
+          <div className="flex flex-col gap-px">
             {[44, 32, 28, 64, 52].map((item) => (
               <div
-                className="flex h-8 items-center gap-2 rounded-lg px-2"
+                className="flex h-8 items-center gap-2 rounded-lg px-2.5"
                 key={item}
               >
                 <div
@@ -209,12 +205,9 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
   if (hasEmptyChatHistory) {
     return (
       <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-        <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/70">
-          History
-        </SidebarGroupLabel>
         <SidebarGroupContent>
-          <div className="flex w-full flex-row items-center justify-center gap-2 px-2 text-[13px] text-sidebar-foreground/60">
-            Your conversations will appear here once you start chatting!
+          <div className="px-3 py-8 text-center text-[12.5px] text-sidebar-foreground/80 leading-relaxed">
+            Your chats will appear here once you start studying.
           </div>
         </SidebarGroupContent>
       </SidebarGroup>
@@ -224,9 +217,6 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
   return (
     <>
       <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-        <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/70">
-          History
-        </SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
             {paginatedChatHistories
@@ -238,10 +228,10 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                   const groupedChats = groupChatsByDate(chatsFromHistory);
 
                   return (
-                    <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-5">
                       {groupedChats.today.length > 0 && (
-                        <div>
-                          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/70">
+                        <div className="flex flex-col gap-px">
+                          <div className="px-2.5 pt-1 pb-1.5 font-medium text-[11px] text-sidebar-foreground/75">
                             Today
                           </div>
                           {groupedChats.today.map((chat) => (
@@ -257,8 +247,8 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                       )}
 
                       {groupedChats.yesterday.length > 0 && (
-                        <div>
-                          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/70">
+                        <div className="flex flex-col gap-px">
+                          <div className="px-2.5 pt-1 pb-1.5 font-medium text-[11px] text-sidebar-foreground/75">
                             Yesterday
                           </div>
                           {groupedChats.yesterday.map((chat) => (
@@ -274,8 +264,8 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                       )}
 
                       {groupedChats.lastWeek.length > 0 && (
-                        <div>
-                          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/70">
+                        <div className="flex flex-col gap-px">
+                          <div className="px-2.5 pt-1 pb-1.5 font-medium text-[11px] text-sidebar-foreground/75">
                             Last 7 days
                           </div>
                           {groupedChats.lastWeek.map((chat) => (
@@ -291,8 +281,8 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                       )}
 
                       {groupedChats.lastMonth.length > 0 && (
-                        <div>
-                          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/70">
+                        <div className="flex flex-col gap-px">
+                          <div className="px-2.5 pt-1 pb-1.5 font-medium text-[11px] text-sidebar-foreground/75">
                             Last 30 days
                           </div>
                           {groupedChats.lastMonth.map((chat) => (
@@ -308,8 +298,8 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                       )}
 
                       {groupedChats.older.length > 0 && (
-                        <div>
-                          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/70">
+                        <div className="flex flex-col gap-px">
+                          <div className="px-2.5 pt-1 pb-1.5 font-medium text-[11px] text-sidebar-foreground/75">
                             Older
                           </div>
                           {groupedChats.older.map((chat) => (
@@ -336,7 +326,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
               <div className="animate-spin">
                 <LoaderIcon />
               </div>
-              <div className="text-[11px]">Loading...</div>
+              <div className="text-[11px]">Loading…</div>
             </div>
           )}
         </SidebarGroupContent>
