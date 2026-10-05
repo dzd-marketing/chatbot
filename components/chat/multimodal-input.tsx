@@ -54,6 +54,7 @@ import {
 } from "../ai-elements/prompt-input";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { ReasoningDropdown, WebSearchToggle } from "./composer-controls";
 import { PaperclipIcon, StopIcon } from "./icons";
 import { PreviewAttachment } from "./preview-attachment";
 import {
@@ -554,6 +555,8 @@ function PureMultimodalInput({
               onModelChange={onModelChange}
               selectedModelId={selectedModelId}
             />
+            <ReasoningDropdown />
+            <WebSearchToggle />
           </PromptInputTools>
 
           {status === "submitted" ? (

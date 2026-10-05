@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { reasoningLevels } from "@/lib/ai/models";
 
 const textPartSchema = z.object({
   text: z.string().min(1).max(2000),
@@ -30,8 +31,11 @@ export const postRequestBodySchema = z.object({
   id: z.uuid(),
   message: userMessageSchema.optional(),
   messages: z.array(toolApprovalMessageSchema).optional(),
+  reasoning: z.enum(reasoningLevels).optional(),
   selectedChatModel: z.string(),
   selectedVisibilityType: z.enum(["public", "private"]),
+  // Web search is on by default; older clients that omit the flag keep it on.
+  webSearch: z.boolean().optional().default(true),
 });
 
 export type PostRequestBody = z.infer<typeof postRequestBodySchema>;

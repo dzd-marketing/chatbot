@@ -1,6 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { customProvider, gateway } from "ai";
 import { isTestEnvironment } from "../constants";
+import type { ChatModel, ReasoningLevel } from "./models";
 import { titleModel } from "./models";
 
 const ZAI_MODEL_PREFIX = "zai/";
@@ -8,9 +9,9 @@ const ZAI_MODEL_PREFIX = "zai/";
 // Z.AI exposes an OpenAI-compatible Chat Completions API.
 // ZAI_BASE_URL is optional; the default is the standard Z.AI API endpoint.
 const zai = createOpenAICompatible({
-  name: "zai",
   apiKey: process.env.ZAI_API_KEY,
   baseURL: process.env.ZAI_BASE_URL ?? "https://api.z.ai/api/paas/v4",
+  name: "zai",
 });
 
 export const myProvider = isTestEnvironment
@@ -50,4 +51,34 @@ export function getTitleModel() {
     return myProvider.languageModel("title-model");
   }
   return getLanguageModel(titleModel.id);
+}
+
+type ProviderOptions = Record<string, Record<string, unknown>>;
+
+/**
+ * Translates the user's reasoning level into provider-specific request
+ * options. `level` must already be resolved for the model
+ * (see resolveReasoningLevel).
+ */
+export function getReasoningProviderOptions(
+  model: ChatModel | undefined,
+  level: ReasoningLevel | undefined
+): ProviderOptions {
+  if (!model?.reasoning || !level) {
+    return {};
+  }
+
+  if (model.id.startsWith(ZAI_MODEL_PREFIX)) {
+    // Z.AI GLM-4.7: thinking can only be switched on or off. Unknown keys
+    // under the provider name are sent as-is in the request body.
+    return {
+      zai: { thinking: { type: level === "off" ? "disabled" : "enabled" } },
+    };
+  }
+
+  if (model.reasoning.control === "effort" && level !== "off") {
+    return { openai: { reasoningEffort: level } };
+  }
+
+  return {};
 }

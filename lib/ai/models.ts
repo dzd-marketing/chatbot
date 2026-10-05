@@ -15,14 +15,98 @@ export type ModelCapabilities = {
   reasoning: boolean;
 };
 
+/**
+ * User-selectable reasoning level. How it maps onto a model depends on that
+ * model's `reasoning.control`:
+ * - "toggle": the model can only switch thinking on or off (Z.AI GLM-4.7
+ *   series: `thinking.type`). "off" = Fast, anything else = Thinking.
+ * - "effort": the model accepts low / medium / high effort and cannot turn
+ *   reasoning off (OpenAI gpt-oss: `reasoningEffort`). "off" maps to "low".
+ */
+export const reasoningLevels = ["off", "low", "medium", "high"] as const;
+export type ReasoningLevel = (typeof reasoningLevels)[number];
+
+export type ReasoningConfig = {
+  control: "toggle" | "effort";
+  defaultLevel: ReasoningLevel;
+};
+
 export type ChatModel = {
   id: string;
   name: string;
   provider: string;
   description: string;
   gatewayOrder?: string[];
-  reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high";
+  reasoning?: ReasoningConfig;
 };
+
+export type ReasoningOption = {
+  value: ReasoningLevel;
+  label: string;
+  description: string;
+};
+
+const toggleReasoningOptions: ReasoningOption[] = [
+  {
+    description: "Answers straight away. Best for quick questions.",
+    label: "Fast",
+    value: "off",
+  },
+  {
+    description: "Works through the problem step by step before answering.",
+    label: "Thinking",
+    value: "high",
+  },
+];
+
+const effortReasoningOptions: ReasoningOption[] = [
+  {
+    description: "Light reasoning for quick answers.",
+    label: "Low",
+    value: "low",
+  },
+  {
+    description: "Balanced speed and depth.",
+    label: "Medium",
+    value: "medium",
+  },
+  {
+    description: "Deepest reasoning for hard problems. Slower.",
+    label: "High",
+    value: "high",
+  },
+];
+
+export function getReasoningOptions(
+  model: Pick<ChatModel, "reasoning"> | undefined
+): ReasoningOption[] {
+  if (!model?.reasoning) {
+    return [];
+  }
+  return model.reasoning.control === "toggle"
+    ? toggleReasoningOptions
+    : effortReasoningOptions;
+}
+
+/**
+ * Coerces a stored or requested level to one the model actually supports,
+ * falling back to the model's default. Returns undefined for models without
+ * a reasoning control.
+ */
+export function resolveReasoningLevel(
+  model: Pick<ChatModel, "reasoning"> | undefined,
+  level: ReasoningLevel | undefined
+): ReasoningLevel | undefined {
+  const config = model?.reasoning;
+  if (!config) {
+    return;
+  }
+  const requested = level ?? config.defaultLevel;
+  if (config.control === "toggle") {
+    return requested === "off" ? "off" : "high";
+  }
+  return requested === "off" ? "low" : requested;
+}
 
 export const chatModels: ChatModel[] = [
   {
@@ -30,6 +114,8 @@ export const chatModels: ChatModel[] = [
     id: "zai/glm-4.7-flash",
     name: "GLM-4.7 Flash",
     provider: "zai",
+    // GLM-4.7 thinks by default; Z.AI only allows switching it on or off.
+    reasoning: { control: "toggle", defaultLevel: "high" },
   },
   {
     description: "Fast and capable model with tool use",
@@ -51,7 +137,7 @@ export const chatModels: ChatModel[] = [
     id: "openai/gpt-oss-20b",
     name: "GPT OSS 20B",
     provider: "openai",
-    reasoningEffort: "low",
+    reasoning: { control: "effort", defaultLevel: "low" },
   },
   {
     description: "Open-source 120B parameter model",
@@ -59,7 +145,7 @@ export const chatModels: ChatModel[] = [
     id: "openai/gpt-oss-120b",
     name: "GPT OSS 120B",
     provider: "openai",
-    reasoningEffort: "low",
+    reasoning: { control: "effort", defaultLevel: "low" },
   },
   {
     description: "Fast non-reasoning model with tool use",
@@ -76,12 +162,9 @@ export async function getCapabilities(): Promise<
   const results = await Promise.all(
     chatModels.map(async (model) => {
       // This model is called directly through Z.AI, not through AI Gateway.
-      // GLM-4.7-Flash supports function calling; it is text-only.
+      // GLM-4.7-Flash supports function calling and thinking; it is text-only.
       if (model.provider === "zai") {
-        return [
-          model.id,
-          { reasoning: false, tools: true, vision: false },
-        ];
+        return [model.id, { reasoning: true, tools: true, vision: false }];
       }
 
       try {

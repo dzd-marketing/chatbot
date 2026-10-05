@@ -19,14 +19,19 @@ import {
   DEFAULT_CHAT_MODEL,
   getCapabilities,
   getModelAvailability,
+  resolveReasoningLevel,
 } from "@/lib/ai/models";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
-import { getLanguageModel } from "@/lib/ai/providers";
+import {
+  getLanguageModel,
+  getReasoningProviderOptions,
+} from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import { updateDocument } from "@/lib/ai/tools/update-document";
+import { webFetch, webSearch, webToolNames } from "@/lib/ai/tools/web";
 import { isProductionEnvironment } from "@/lib/constants";
 import {
   createStreamId,
@@ -78,8 +83,15 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { id, message, messages, selectedChatModel, selectedVisibilityType } =
-      requestBody;
+    const {
+      id,
+      message,
+      messages,
+      reasoning,
+      selectedChatModel,
+      selectedVisibilityType,
+      webSearch: webSearchRequested,
+    } = requestBody;
 
     const [botIdResult, session] = await Promise.all([
       checkBotId().catch(() => null),
@@ -199,6 +211,8 @@ export async function POST(request: Request) {
     const capabilities = modelCapabilities[chatModel];
     const isReasoningModel = capabilities?.reasoning === true;
     const supportsTools = capabilities?.tools === true;
+    const webToolsEnabled = supportsTools && webSearchRequested;
+    const reasoningLevel = resolveReasoningLevel(modelConfig, reasoning);
 
     const modelMessages = await convertToModelMessages(uiMessages);
 
@@ -276,8 +290,13 @@ export async function POST(request: Request) {
                   "editDocument",
                   "updateDocument",
                   "requestSuggestions",
+                  ...(webToolsEnabled ? webToolNames : []),
                 ],
-          instructions: systemPrompt({ requestHints, supportsTools }),
+          instructions: systemPrompt({
+            requestHints,
+            supportsTools,
+            webSearch: webSearchRequested,
+          }),
           messages: modelMessages,
           model: getLanguageModel(chatModel),
           onAbort() {
@@ -298,9 +317,7 @@ export async function POST(request: Request) {
             ...(modelConfig?.gatewayOrder && {
               gateway: { order: modelConfig.gatewayOrder },
             }),
-            ...(modelConfig?.reasoningEffort && {
-              openai: { reasoningEffort: modelConfig.reasoningEffort },
-            }),
+            ...getReasoningProviderOptions(modelConfig, reasoningLevel),
           },
           stopWhen: isStepCount(5),
           telemetry: {
@@ -325,12 +342,14 @@ export async function POST(request: Request) {
               modelId: chatModel,
               session,
             }),
+            webFetch,
+            webSearch,
           },
         });
 
         dataStream.merge(
           toUIMessageStream({
-            sendReasoning: isReasoningModel,
+            sendReasoning: isReasoningModel && reasoningLevel !== "off",
             stream: result.stream,
           })
         );

@@ -18,8 +18,8 @@
     "db:up": "drizzle-kit up",
     "test": "export PLAYWRIGHT=True && pnpm exec playwright test"
   },
-  
   "dependencies": {
+    "@ai-sdk/mcp": "2.0.7",
     "@ai-sdk/openai-compatible": "3.0.6",
     "@ai-sdk/otel": "^1.0.15",
     "@ai-sdk/provider": "4.0.2",

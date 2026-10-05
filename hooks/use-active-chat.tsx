@@ -17,12 +17,19 @@ import {
 } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
+import { useLocalStorage } from "usehooks-ts";
 import { useDataStream } from "@/components/chat/data-stream-provider";
 import { getChatHistoryPaginationKey } from "@/components/chat/sidebar-history";
 import { toast } from "@/components/chat/toast";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
 import { useAutoResume } from "@/hooks/use-auto-resume";
-import { DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
+import {
+  chatModels,
+  DEFAULT_CHAT_MODEL,
+  type ReasoningLevel,
+  reasoningLevels,
+  resolveReasoningLevel,
+} from "@/lib/ai/models";
 import type { Vote } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
 import type { ChatMessage } from "@/lib/types";
@@ -47,6 +54,12 @@ type ActiveChatContextValue = {
   setCurrentModelId: (id: string) => void;
   showCreditCardAlert: boolean;
   setShowCreditCardAlert: Dispatch<SetStateAction<boolean>>;
+  /** Student's Web search toggle. On by default. */
+  webSearchEnabled: boolean;
+  setWebSearchEnabled: (enabled: boolean) => void;
+  /** Reasoning level resolved for the current model (undefined = no control). */
+  reasoningLevel: ReasoningLevel | undefined;
+  setReasoningLevel: (level: ReasoningLevel) => void;
 };
 
 const ActiveChatContext = createContext<ActiveChatContextValue | null>(null);
@@ -81,6 +94,34 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
   const [input, setInput] = useState("");
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
+
+  // Composer preferences, remembered across chats on this device.
+  // initializeWithValue: false keeps SSR and the first client render in sync.
+  const [webSearchEnabled, setWebSearchEnabled] = useLocalStorage(
+    "dzd-web-search",
+    true,
+    { initializeWithValue: false }
+  );
+  const [storedReasoning, setReasoningLevel] =
+    useLocalStorage<ReasoningLevel | null>("dzd-reasoning", null, {
+      initializeWithValue: false,
+    });
+  const reasoningPreference = reasoningLevels.includes(
+    storedReasoning as ReasoningLevel
+  )
+    ? (storedReasoning as ReasoningLevel)
+    : undefined;
+  const reasoningLevel = resolveReasoningLevel(
+    chatModels.find((model) => model.id === currentModelId),
+    reasoningPreference
+  );
+
+  const webSearchEnabledRef = useRef(webSearchEnabled);
+  const reasoningLevelRef = useRef(reasoningLevel);
+  useEffect(() => {
+    webSearchEnabledRef.current = webSearchEnabled !== false;
+    reasoningLevelRef.current = reasoningLevel;
+  }, [webSearchEnabled, reasoningLevel]);
 
   const { data: chatData, isLoading } = useSWR(
     isNewChat
@@ -168,6 +209,10 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
               : { message: lastMessage }),
             selectedChatModel: currentModelIdRef.current,
             selectedVisibilityType: visibility,
+            webSearch: webSearchEnabledRef.current,
+            ...(reasoningLevelRef.current && {
+              reasoning: reasoningLevelRef.current,
+            }),
             ...request.body,
           },
         };
@@ -263,17 +308,21 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       isLoading: !isNewChat && isLoading,
       isReadonly,
       messages,
+      reasoningLevel,
       regenerate,
       sendMessage,
       setCurrentModelId,
       setInput,
       setMessages,
+      setReasoningLevel,
       setShowCreditCardAlert,
+      setWebSearchEnabled,
       showCreditCardAlert,
       status,
       stop,
       visibilityType: visibility,
       votes,
+      webSearchEnabled: webSearchEnabled !== false,
     }),
     [
       chatId,
@@ -292,6 +341,10 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       votes,
       currentModelId,
       showCreditCardAlert,
+      webSearchEnabled,
+      setWebSearchEnabled,
+      reasoningLevel,
+      setReasoningLevel,
     ]
   );
 

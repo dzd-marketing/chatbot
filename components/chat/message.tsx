@@ -21,6 +21,7 @@ import { MessageActions } from "./message-actions";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
+import { WebFetchCall, WebSearchCall } from "./web-tool-call";
 
 function WaitingText() {
   const { waitingStatus } = useDataStream();
@@ -336,6 +337,14 @@ const PurePreviewMessage = ({
           </ToolContent>
         </Tool>
       );
+    }
+
+    if (type === "tool-webSearch") {
+      return <WebSearchCall key={part.toolCallId} part={part} />;
+    }
+
+    if (type === "tool-webFetch") {
+      return <WebFetchCall key={part.toolCallId} part={part} />;
     }
 
     return null;
