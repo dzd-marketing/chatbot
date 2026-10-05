@@ -1,15 +1,15 @@
 import { motion } from "framer-motion";
-import { DzdLogoMark } from "./icons";
+import { WelcomeLoader } from "./welcome-loader";
 
 export const Greeting = () => (
   <div className="flex flex-col items-center px-4" key="overview">
     <motion.div
       animate={{ opacity: 1, scale: 1 }}
-      className="mb-5"
+      className="mb-8"
       initial={{ opacity: 0, scale: 0.9 }}
       transition={{ delay: 0.2, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
     >
-      <DzdLogoMark className="drop-shadow-sm" size={44} />
+      <WelcomeLoader />
     </motion.div>
     <motion.h1
       animate={{ opacity: 1, y: 0 }}
