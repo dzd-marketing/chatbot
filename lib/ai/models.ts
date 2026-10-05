@@ -1,11 +1,12 @@
-export const DEFAULT_CHAT_MODEL = "moonshotai/kimi-k2.5";
+export const DEFAULT_CHAT_MODEL = "zai/glm-4.7-flash";
 
+// Use Z.AI for title generation too, so the default chat path does not
+// depend on Vercel AI Gateway.
 export const titleModel = {
   description: "Fast model for title generation",
-  gatewayOrder: ["fireworks", "bedrock"],
-  id: "moonshotai/kimi-k2.5",
-  name: "Kimi K2.5",
-  provider: "moonshotai",
+  id: "zai/glm-4.7-flash",
+  name: "GLM-4.7 Flash",
+  provider: "zai",
 };
 
 export type ModelCapabilities = {
@@ -24,6 +25,12 @@ export type ChatModel = {
 };
 
 export const chatModels: ChatModel[] = [
+  {
+    description: "Free, lightweight model from Z.AI",
+    id: "zai/glm-4.7-flash",
+    name: "GLM-4.7 Flash",
+    provider: "zai",
+  },
   {
     description: "Fast and capable model with tool use",
     gatewayOrder: ["bedrock", "deepinfra"],
@@ -68,6 +75,15 @@ export async function getCapabilities(): Promise<
 > {
   const results = await Promise.all(
     chatModels.map(async (model) => {
+      // This model is called directly through Z.AI, not through AI Gateway.
+      // GLM-4.7-Flash supports function calling; it is text-only.
+      if (model.provider === "zai") {
+        return [
+          model.id,
+          { reasoning: false, tools: true, vision: false },
+        ];
+      }
+
       try {
         const res = await fetch(
           `https://ai-gateway.vercel.sh/v1/models/${model.id}/endpoints`,
@@ -202,7 +218,8 @@ export async function getModelAvailability(
 ): Promise<ModelAvailability> {
   const model = chatModels.find((item) => item.id === modelId);
 
-  if (!model) {
+  // Z.AI availability is not represented in the AI Gateway endpoint API.
+  if (!model || model.provider === "zai") {
     return "unknown";
   }
 
