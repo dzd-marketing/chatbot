@@ -1,6 +1,3 @@
-import Image from "next/image";
-import dzdLearnLogo from "@/public/brand/dzd-learn-logo.png";
-
 export const BotIcon = () => (
   <svg
     height="16"
@@ -54,11 +51,12 @@ export const AttachmentIcon = () => (
 );
 
 /**
- * DZD Learn brand mark: the official DZD Learn logo
- * (public/brand/dzd-learn-logo.png) on a near-black rounded tile, matching
- * the favicon. The tile keeps the logo's white book pages visible on light
- * surfaces. Pass `title` when the mark is meaningful on its own (e.g. the
- * DZD AI avatar); otherwise it is treated as decorative.
+ * DZD Learn brand mark: green sound-wave bars with two sparkles, drawn as an
+ * inline SVG (a vector rebuild of public/brand/dzd-learn-icon.png, also saved
+ * as public/brand/dzd-learn-icon.svg) so it stays sharp at every size. No
+ * background tile: the #10B981 green works on both light and dark surfaces.
+ * Pass `title` when the mark is meaningful on its own (e.g. the DZD AI
+ * avatar); otherwise it is treated as decorative.
  */
 export const DzdLogoMark = ({
   size = 24,
@@ -68,29 +66,41 @@ export const DzdLogoMark = ({
   size?: number;
   className?: string;
   title?: string;
-}) => {
-  const inner = Math.round(size * 0.8);
-  return (
-    <span
-      aria-hidden={title ? undefined : true}
-      className={`inline-flex shrink-0 items-center justify-center bg-[#111111] dark:ring-1 dark:ring-white/10 ${className ?? ""}`}
-      style={{
-        borderRadius: Math.round(size * 0.24),
-        height: size,
-        width: size,
-      }}
-    >
-      <Image
-        alt={title ?? ""}
-        className="object-contain"
-        draggable={false}
-        height={inner}
-        src={dzdLearnLogo}
-        width={inner}
+}) => (
+  <svg
+    aria-hidden={title ? undefined : true}
+    className={`shrink-0 text-[#10B981] ${className ?? ""}`}
+    fill="currentColor"
+    height={size}
+    role={title ? "img" : undefined}
+    viewBox="0 0 24 24"
+    width={size}
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    {title ? <title>{title}</title> : null}
+    <g>
+      <rect height={7} rx={0.75} width={1.5} x={2.5} y={8.5} />
+      <rect height={20} rx={0.75} width={1.5} x={5.5} y={2} />
+      <rect height={10} rx={0.75} width={1.5} x={8.5} y={7} />
+      <rect height={5} rx={0.75} width={1.5} x={11.5} y={9.5} />
+      <rect height={8.5} rx={0.75} width={1.5} x={14.5} y={8.5} />
+      <rect height={14} rx={0.75} width={1.5} x={17.5} y={8} />
+      <rect height={5.5} rx={0.75} width={1.5} x={20.5} y={10} />
+      <path
+        d="M16.5 1.063Q17.012 2.988 18.938 3.5Q17.012 4.012 16.5 5.938Q15.988 4.012 14.063 3.5Q15.988 2.988 16.5 1.063Z"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth={1.125}
       />
-    </span>
-  );
-};
+      <path
+        d="M21.5 4.3Q21.806 5.694 23.2 6Q21.806 6.306 21.5 7.7Q21.194 6.306 19.8 6Q21.194 5.694 21.5 4.3Z"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth={0.6}
+      />
+    </g>
+  </svg>
+);
 
 /** Mark + "DZD Learn" wordmark. Text is real text for accessibility. */
 export const DzdWordmark = ({
