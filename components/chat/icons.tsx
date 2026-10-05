@@ -51,9 +51,9 @@ export const AttachmentIcon = () => (
 );
 
 /**
- * DZD Learn brand mark: a graduation cap on the DZD Learn green (#39FF13).
- * The cap is near-black so it stays legible on the vivid green in both themes.
- * Keep in sync with app/icon.svg.
+ * DZD Learn brand mark: a graduation cap on the DZD Learn emerald tile.
+ * Follows the theme tokens: white cap on #047857 (light), near-black cap on
+ * #10B981 (dark). Keep in sync with app/icon.svg.
  */
 export const DzdLogoMark = ({
   size = 24,
@@ -74,19 +74,27 @@ export const DzdLogoMark = ({
     width={size}
   >
     {title ? <title>{title}</title> : null}
-    <rect fill="var(--brand, #39FF13)" height="32" rx="8" width="32" />
-    <path d="M16 7.5 28 13.25 16 19 4 13.25Z" fill="#0B0B0B" />
+    <rect fill="var(--brand, #047857)" height="32" rx="8" width="32" />
+    <path
+      d="M16 7.5 28 13.25 16 19 4 13.25Z"
+      fill="var(--brand-foreground, #FFFFFF)"
+    />
     <path
       d="M9.25 16.4v4.85c0 1.95 3.05 3.5 6.75 3.5s6.75-1.55 6.75-3.5V16.4L16 19.6Z"
-      fill="#0B0B0B"
+      fill="var(--brand-foreground, #FFFFFF)"
     />
     <path
       d="M26 14.3v5.4"
-      stroke="#0B0B0B"
+      stroke="var(--brand-foreground, #FFFFFF)"
       strokeLinecap="round"
       strokeWidth="1.6"
     />
-    <circle cx="26" cy="20.6" fill="#0B0B0B" r="1.25" />
+    <circle
+      cx="26"
+      cy="20.6"
+      fill="var(--brand-foreground, #FFFFFF)"
+      r="1.25"
+    />
   </svg>
 );
 

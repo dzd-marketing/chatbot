@@ -56,20 +56,20 @@
   --radius: 0.625rem;
 
   /*
-   * DZD Learn primary green: #39FF13 === oklch(0.8714 0.2861 141.51)
-   * (round-trip verified). Only ever pair it with near-black text
-   * (~14.6:1 contrast). On light surfaces it is ~1.36:1 against white, so
-   * green *text* and thin focus edges in light mode use --brand-ink /
-   * --ring-edge instead, while fills, halos, and highlights stay #39FF13.
+   * DZD Learn green: a deep emerald that pairs with black and white.
+   * Light mode: #047857 = oklch(0.5081 0.1049 165.61)
+   *   - white text on green 5.5:1, green text/links on white 5.3:1 (AA)
+   * Dark mode (see .dark): #10B981 = oklch(0.6959 0.1491 162.48)
+   *   - near-black text on green 7.8:1, green on charcoal 7.2:1 (AA)
+   * Translucent tints below derive from --brand via color-mix so they
+   * follow the active theme automatically.
    */
-  --brand: oklch(0.8714 0.2861 141.51);
-  --brand-foreground: oklch(0.16 0 0);
-  --brand-ink: oklch(
-    0.5056 0.166 140.92
-  ); /* #1A7A00, same hue, 5.5:1 on white */
-  --brand-soft: oklch(0.8714 0.2861 141.51 / 0.16);
-  --ring-edge: oklch(0.2 0 0);
-  --focus-inner: oklch(0.2 0 0);
+  --brand: oklch(0.5081 0.1049 165.61);
+  --brand-foreground: oklch(1 0 0);
+  --brand-ink: var(--brand);
+  --brand-soft: color-mix(in oklch, var(--brand) 12%, transparent);
+  --ring-edge: var(--brand);
+  --focus-inner: transparent;
 
   --background: oklch(0.985 0 0);
   --foreground: oklch(0.12 0 0);
@@ -108,7 +108,8 @@
     0 8px 24px -6px oklch(0 0 0 / 0.1), 0 2px 8px -2px oklch(0 0 0 / 0.04);
   --shadow-composer: 0 1px 2px oklch(0 0 0 / 0.04);
   --shadow-composer-focus:
-    0 0 0 1px var(--ring-edge), 0 0 0 4px oklch(0.8714 0.2861 141.51 / 0.45),
+    0 0 0 1px var(--ring-edge),
+    0 0 0 4px color-mix(in oklch, var(--brand) 18%, transparent),
     0 2px 8px -2px oklch(0 0 0 / 0.06);
   --shadow-inset: inset 0 1px 1px oklch(0 0 0 / 0.03);
   --shadow-glow: 0 0 20px oklch(0 0 0 / 0.08);
@@ -119,9 +120,11 @@
 }
 
 .dark {
-  /* On charcoal, #39FF13 itself is readable (~12:1), so ink == brand. */
+  /* Brighter emerald for charcoal surfaces; text on it is near-black. */
+  --brand: oklch(0.6959 0.1491 162.48);
+  --brand-foreground: oklch(0.16 0 0);
   --brand-ink: var(--brand);
-  --brand-soft: oklch(0.8714 0.2861 141.51 / 0.14);
+  --brand-soft: color-mix(in oklch, var(--brand) 14%, transparent);
   --ring-edge: var(--brand);
   --focus-inner: transparent;
 
@@ -166,8 +169,8 @@
   --shadow-composer:
     0 1px 3px oklch(0 0 0 / 0.2), inset 0 1px 0 oklch(1 0 0 / 0.03);
   --shadow-composer-focus:
-    0 0 0 1px oklch(0.8714 0.2861 141.51 / 0.7),
-    0 0 0 4px oklch(0.8714 0.2861 141.51 / 0.18),
+    0 0 0 1px color-mix(in oklch, var(--brand) 70%, transparent),
+    0 0 0 4px color-mix(in oklch, var(--brand) 18%, transparent),
     0 4px 16px -4px oklch(0 0 0 / 0.3), inset 0 1px 0 oklch(1 0 0 / 0.04);
 }
 
@@ -228,8 +231,7 @@ textarea:focus-visible {
 
 /*
  * Branded, high-contrast keyboard focus indicator for interactive controls:
- * a #39FF13 outline, plus a charcoal inner edge in light mode so the
- * indicator keeps >3:1 contrast against white surfaces.
+ * a 2px emerald outline (>3:1 against both light and dark surfaces).
  */
 :is(
   a[href],
@@ -247,7 +249,7 @@ textarea:focus-visible {
 
 ::selection {
   color: var(--foreground);
-  background: oklch(0.8714 0.2861 141.51 / 0.35);
+  background: color-mix(in oklch, var(--brand) 25%, transparent);
 }
 
 @utility text-balance {
@@ -378,10 +380,10 @@ textarea:focus-visible {
 @keyframes glow-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 oklch(0.8714 0.2861 141.51 / 0%);
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--brand) 0%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 3px oklch(0.8714 0.2861 141.51 / 20%);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--brand) 20%, transparent);
   }
 }
 
@@ -457,7 +459,7 @@ textarea:focus-visible {
 .ͼo.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground,
 .ͼo.cm-selectionBackground,
 .ͼo.cm-content::selection {
-  background: oklch(0.8714 0.2861 141.51 / 0.25) !important;
+  background: color-mix(in oklch, var(--brand) 20%, transparent) !important;
 }
 
 .dark
@@ -467,7 +469,7 @@ textarea:focus-visible {
   .cm-selectionBackground,
 .dark .ͼo.cm-selectionBackground,
 .dark .ͼo.cm-content::selection {
-  background: oklch(0.8714 0.2861 141.51 / 0.2) !important;
+  background: color-mix(in oklch, var(--brand) 25%, transparent) !important;
 }
 
 .cm-activeLine {
@@ -497,15 +499,15 @@ textarea:focus-visible {
 }
 
 .cm-matchingBracket {
-  outline: 1px solid oklch(0.8714 0.2861 141.51 / 0.6);
-  background: oklch(0.8714 0.2861 141.51 / 0.18) !important;
+  outline: 1px solid color-mix(in oklch, var(--brand) 60%, transparent);
+  background: color-mix(in oklch, var(--brand) 15%, transparent) !important;
   border-radius: 2px;
 }
 
 .suggestion-highlight {
   -webkit-user-select: none;
   user-select: none;
-  @apply cursor-pointer rounded-sm bg-brand/30 transition-colors hover:bg-brand/50 dark:bg-brand/20 dark:text-foreground dark:hover:bg-brand/30;
+  @apply cursor-pointer rounded-sm bg-brand/20 transition-colors hover:bg-brand/30 dark:bg-brand/25 dark:text-foreground dark:hover:bg-brand/35;
 }
 
 @layer base {
