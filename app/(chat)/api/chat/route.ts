@@ -5,6 +5,7 @@ import {
   createUIMessageStreamResponse,
   generateId,
   isStepCount,
+  smoothStream,
   streamText,
   toUIMessageStream,
 } from "ai";
@@ -26,13 +27,14 @@ import {
   getLanguageModel,
   getReasoningProviderOptions,
 } from "@/lib/ai/providers";
+import { generateFollowUpSuggestions } from "@/lib/ai/suggestions";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import { updateDocument } from "@/lib/ai/tools/update-document";
 import { webFetch, webSearch, webToolNames } from "@/lib/ai/tools/web";
-import { isProductionEnvironment } from "@/lib/constants";
+import { isProductionEnvironment, isTestEnvironment } from "@/lib/constants";
 import {
   createStreamId,
   deleteChatById,
@@ -48,7 +50,11 @@ import type { DBMessage } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
 import { checkIpRateLimit } from "@/lib/ratelimit";
 import type { ChatMessage, WaitingStatusData } from "@/lib/types";
-import { convertToUIMessages, generateUUID } from "@/lib/utils";
+import {
+  convertToUIMessages,
+  generateUUID,
+  getTextFromMessage,
+} from "@/lib/utils";
 import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
@@ -292,6 +298,12 @@ export async function POST(request: Request) {
                   "requestSuggestions",
                   ...(webToolsEnabled ? webToolNames : []),
                 ],
+          // Release text word by word at a steady pace, so the client's
+          // word blur-in animation follows reading rhythm instead of bursts.
+          experimental_transform: smoothStream({
+            chunking: "word",
+            delayInMs: 15,
+          }),
           instructions: systemPrompt({
             requestHints,
             supportsTools,
@@ -354,6 +366,38 @@ export async function POST(request: Request) {
           })
         );
 
+        // Follow-up suggestions: generated once the answer is complete and
+        // written as a persisted data part on the same assistant message.
+        const suggestionsTask = isTestEnvironment
+          ? Promise.resolve()
+          : (async () => {
+              try {
+                const [finishReason, answer] = await Promise.all([
+                  result.finishReason,
+                  result.text,
+                ]);
+                if (finishReason !== "stop" && finishReason !== "length") {
+                  return;
+                }
+                const lastUserMessage =
+                  message ?? uiMessages.findLast((m) => m.role === "user");
+                const suggestions = await generateFollowUpSuggestions({
+                  answer,
+                  question: lastUserMessage
+                    ? getTextFromMessage(lastUserMessage)
+                    : "",
+                });
+                if (suggestions.length > 0) {
+                  dataStream.write({
+                    data: suggestions,
+                    type: "data-suggestions",
+                  });
+                }
+              } catch {
+                /* suggestions are optional */
+              }
+            })();
+
         if (titlePromise) {
           try {
             const title = await titlePromise;
@@ -363,6 +407,8 @@ export async function POST(request: Request) {
             /* non-fatal */
           }
         }
+
+        await suggestionsTask;
       },
       generateId: generateUUID,
       onEnd: async ({ messages: finishedMessages }) => {

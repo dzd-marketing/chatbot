@@ -322,9 +322,22 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
 const streamdownPlugins = { cjk, code, math, mermaid };
 
+/**
+ * Word-by-word blur-in while a reply streams. The keyframes and the
+ * [data-sd-animate] rule live in app/globals.css. Keep this object at module
+ * level: Streamdown memoizes on its identity.
+ */
+const streamdownAnimation = {
+  animation: "dzdBlurIn",
+  duration: 500,
+  easing: "ease",
+  sep: "word",
+} as const;
+
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
+      animated={streamdownAnimation}
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
@@ -333,7 +346,10 @@ export const MessageResponse = memo(
       {...props}
     />
   ),
-  (prevProps, nextProps) => prevProps.children === nextProps.children
+  (prevProps, nextProps) =>
+    prevProps.children === nextProps.children &&
+    prevProps.isAnimating === nextProps.isAnimating &&
+    prevProps.className === nextProps.className
 );
 
 MessageResponse.displayName = "MessageResponse";

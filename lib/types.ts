@@ -53,6 +53,8 @@ export type CustomUIDataTypes = {
   finish: null;
   "chat-title": string;
   "waiting-status": WaitingStatusData;
+  /** Follow-up suggestions shown under the latest assistant reply. */
+  suggestions: string[];
 };
 
 export type ChatMessage = UIMessage<

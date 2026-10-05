@@ -95,6 +95,12 @@ function PureMessages({
                 hasSentMessage && index === messages.length - 1
               }
               setMessages={setMessages}
+              showSuggestions={
+                !isReadonly &&
+                status === "ready" &&
+                message.role === "assistant" &&
+                index === messages.length - 1
+              }
               vote={
                 votes
                   ? votes.find((vote) => vote.messageId === message.id)

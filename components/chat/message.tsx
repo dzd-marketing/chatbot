@@ -16,6 +16,7 @@ import {
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
 import { DocumentPreview } from "./document-preview";
+import { FollowUpSuggestions } from "./follow-up-suggestions";
 import { DzdLogoMark } from "./icons";
 import { MessageActions } from "./message-actions";
 import { MessageReasoning } from "./message-reasoning";
@@ -98,6 +99,7 @@ const PurePreviewMessage = ({
   isReadonly,
   requiresScrollPadding: _requiresScrollPadding,
   onEdit,
+  showSuggestions = false,
 }: {
   addToolApprovalResponse: UseChatHelpers<ChatMessage>["addToolApprovalResponse"];
   chatId: string;
@@ -109,6 +111,8 @@ const PurePreviewMessage = ({
   isReadonly: boolean;
   requiresScrollPadding: boolean;
   onEdit?: (message: ChatMessage) => void;
+  /** Show follow-up chips (latest assistant reply, chat idle, not readonly). */
+  showSuggestions?: boolean;
 }) => {
   const attachmentsFromMessage = message.parts.filter(
     (part) => part.type === "file"
@@ -218,7 +222,11 @@ const PurePreviewMessage = ({
           data-testid="message-content"
           key={key}
         >
-          <MessageResponse>{sanitizeText(part.text)}</MessageResponse>
+          <MessageResponse
+            isAnimating={isAssistant && isLoading && part.state === "streaming"}
+          >
+            {sanitizeText(part.text)}
+          </MessageResponse>
         </MessageContent>
       );
     }
@@ -387,6 +395,11 @@ const PurePreviewMessage = ({
     />
   );
 
+  const followUps =
+    isAssistant && showSuggestions && !isLoading && !isReadonly
+      ? message.parts.findLast((part) => part.type === "data-suggestions")?.data
+      : undefined;
+
   const content = isThinking ? (
     <WaitingText />
   ) : (
@@ -394,6 +407,12 @@ const PurePreviewMessage = ({
       {attachments}
       {parts}
       {actions}
+      {followUps && followUps.length > 0 ? (
+        <FollowUpSuggestions
+          key={`follow-ups-${message.id}`}
+          suggestions={followUps}
+        />
+      ) : null}
     </>
   );
 

@@ -554,3 +554,35 @@ textarea:focus-visible {
 [data-testid="artifact"] {
   isolation: isolate;
 }
+
+/*
+ * Streaming reply animation (Streamdown `animated`, see MessageResponse).
+ * Streamdown wraps each new word in <span data-sd-animate> while a reply
+ * streams; each word fades up out of a soft blur.
+ */
+@keyframes sd-dzdBlurIn {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    filter: none;
+    transform: none;
+  }
+}
+
+[data-sd-animate] {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-decoration: inherit;
+  animation: var(--sd-animation) var(--sd-duration) var(--sd-easing) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-sd-animate] {
+    animation: none;
+  }
+}
