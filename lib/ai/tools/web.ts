@@ -146,6 +146,38 @@ async function callWebTool(
   return text;
 }
 
+export type WebSource = { title: string; url: string };
+
+const MAX_SOURCES = 10;
+const RESULT_PATTERN = /^\s*\d+\.\s+(.*)\n\s+URL:\s+(https?:\/\/\S+)/gm;
+
+/**
+ * Pulls "N. Title / URL: ..." pairs out of the Space's search output for the
+ * UI (source badges). The "---" footer repeats the top URL, so it's dropped.
+ */
+function parseSearchSources(text: string): WebSource[] {
+  const body = text.split(/\n---\n/)[0] ?? text;
+  const sources: WebSource[] = [];
+  const seen = new Set<string>();
+  for (const [, rawTitle, url] of body.matchAll(RESULT_PATTERN)) {
+    if (seen.has(url)) {
+      continue;
+    }
+    seen.add(url);
+    sources.push({ title: rawTitle.trim().slice(0, 200), url });
+    if (sources.length >= MAX_SOURCES) {
+      break;
+    }
+  }
+  return sources;
+}
+
+/** The Space starts Markdown output with "# <page title>". */
+function parsePageTitle(text: string) {
+  const match = text.match(/^#\s+(.+)$/m);
+  return match ? match[1].trim().slice(0, 200) : undefined;
+}
+
 function toErrorMessage(error: unknown) {
   if (error instanceof WebToolError) {
     return error.message;
@@ -177,7 +209,12 @@ export const webSearch = tool({
         abortSignal
       );
       const { text: results, truncated } = truncate(text, MAX_SEARCH_CHARS);
-      return { query: input.query, results, truncated };
+      return {
+        query: input.query,
+        results,
+        sources: parseSearchSources(text),
+        truncated,
+      };
     } catch (error) {
       return { error: toErrorMessage(error), query: input.query };
     }
@@ -227,7 +264,12 @@ export const webFetch = tool({
         text,
         maxChars + FOOTER_ALLOWANCE
       );
-      return { content, truncated, url: input.url };
+      return {
+        content,
+        title: parsePageTitle(text),
+        truncated,
+        url: input.url,
+      };
     } catch (error) {
       return { error: toErrorMessage(error), url: input.url };
     }

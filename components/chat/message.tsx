@@ -21,7 +21,12 @@ import { MessageActions } from "./message-actions";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
-import { WebFetchCall, WebSearchCall } from "./web-tool-call";
+import {
+  isResearchPart,
+  isWebToolPart,
+  type ResearchPart,
+  WebResearch,
+} from "./web-research";
 
 function WaitingText() {
   const { waitingStatus } = useDataStream();
@@ -156,9 +161,38 @@ const PurePreviewMessage = ({
     { isStreaming: false, rendered: false, text: "" }
   ) ?? { isStreaming: false, rendered: false, text: "" };
 
+  // When DZD AI used web tools, its reasoning and search/read steps are shown
+  // together as one chain of thought, placed where the first of them occurs.
+  const hasWebActivity = message.parts?.some(isWebToolPart) ?? false;
+  const researchParts: ResearchPart[] = hasWebActivity
+    ? message.parts.filter(isResearchPart)
+    : [];
+  const firstResearchIndex = hasWebActivity
+    ? message.parts.findIndex(isResearchPart)
+    : -1;
+  const lastResearchIndex = hasWebActivity
+    ? message.parts.findLastIndex(isResearchPart)
+    : -1;
+  const answerStarted =
+    hasWebActivity &&
+    message.parts
+      .slice(lastResearchIndex + 1)
+      .some((part) => part.type === "text" && part.text.trim().length > 0);
+
   const parts = message.parts?.map((part, index) => {
     const { type } = part;
     const key = `message-${message.id}-part-${index}`;
+
+    if (hasWebActivity && isResearchPart(part)) {
+      return index === firstResearchIndex ? (
+        <WebResearch
+          answerStarted={answerStarted}
+          isLoading={isLoading}
+          key={key}
+          parts={researchParts}
+        />
+      ) : null;
+    }
 
     if (type === "reasoning") {
       if (!mergedReasoning.rendered && mergedReasoning.text) {
@@ -337,14 +371,6 @@ const PurePreviewMessage = ({
           </ToolContent>
         </Tool>
       );
-    }
-
-    if (type === "tool-webSearch") {
-      return <WebSearchCall key={part.toolCallId} part={part} />;
-    }
-
-    if (type === "tool-webFetch") {
-      return <WebFetchCall key={part.toolCallId} part={part} />;
     }
 
     return null;
