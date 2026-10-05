@@ -1,5 +1,12 @@
 export const DEFAULT_CHAT_MODEL = "zai/glm-4.7-flash";
 
+/**
+ * The model list endpoint used by the composer. The version query makes
+ * browsers skip responses cached by older deployments (which allowed a
+ * 24-hour cache); bump it when the response shape changes.
+ */
+export const MODELS_API_URL = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models?v=2`;
+
 // Use Z.AI for title generation too, so the default chat path does not
 // depend on Vercel AI Gateway.
 export const titleModel = {

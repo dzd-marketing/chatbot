@@ -4,7 +4,11 @@ import { isTestEnvironment } from "../constants";
 import { createDzdModel, type DzdStreamHooks, isDzdModel } from "./dzd";
 import type { ChatModel, ReasoningLevel } from "./models";
 import { titleModel } from "./models";
-import { createNvidiaModel, isNvidiaModel } from "./nvidia";
+import {
+  createNvidiaModel,
+  isNvidiaModel,
+  nvidiaReasoningOptions,
+} from "./nvidia";
 
 const ZAI_MODEL_PREFIX = "zai/";
 
@@ -92,6 +96,10 @@ export function getReasoningProviderOptions(
     return {
       zai: { thinking: { type: level === "off" ? "disabled" : "enabled" } },
     };
+  }
+
+  if (isNvidiaModel(model.id)) {
+    return nvidiaReasoningOptions(model.reasoning, level) as ProviderOptions;
   }
 
   if (model.reasoning.control === "effort" && level !== "off") {

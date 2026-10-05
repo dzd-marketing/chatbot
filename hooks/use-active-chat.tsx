@@ -9,6 +9,7 @@ import {
   type Dispatch,
   type ReactNode,
   type SetStateAction,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -23,13 +24,18 @@ import { getChatHistoryPaginationKey } from "@/components/chat/sidebar-history";
 import { toast } from "@/components/chat/toast";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
 import { useAutoResume } from "@/hooks/use-auto-resume";
+import { useChatModels } from "@/hooks/use-chat-models";
 import {
-  chatModels,
   DEFAULT_CHAT_MODEL,
   type ReasoningLevel,
   reasoningLevels,
   resolveReasoningLevel,
 } from "@/lib/ai/models";
+import {
+  resolveToolSettings,
+  type ToolGroupId,
+  type ToolSettings,
+} from "@/lib/ai/tool-groups";
 import type { Vote } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
 import type { ChatMessage } from "@/lib/types";
@@ -55,8 +61,9 @@ type ActiveChatContextValue = {
   showCreditCardAlert: boolean;
   setShowCreditCardAlert: Dispatch<SetStateAction<boolean>>;
   /** Student's Web search toggle. On by default. */
-  webSearchEnabled: boolean;
-  setWebSearchEnabled: (enabled: boolean) => void;
+  /** The composer's Tools menu (lib/ai/tool-groups.ts). */
+  toolSettings: ToolSettings;
+  setToolEnabled: (id: ToolGroupId, enabled: boolean) => void;
   /** Reasoning level resolved for the current model (undefined = no control). */
   reasoningLevel: ReasoningLevel | undefined;
   setReasoningLevel: (level: ReasoningLevel) => void;
@@ -97,10 +104,30 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
   // Composer preferences, remembered across chats on this device.
   // initializeWithValue: false keeps SSR and the first client render in sync.
-  const [webSearchEnabled, setWebSearchEnabled] = useLocalStorage(
-    "dzd-web-search",
-    true,
-    { initializeWithValue: false }
+  const [storedTools, setStoredTools] = useLocalStorage<Partial<
+    Record<ToolGroupId, boolean>
+  > | null>("dzd-tools", null, { initializeWithValue: false });
+  // Before the Tools menu, only web search could be switched.
+  const [legacyWebSearch] = useLocalStorage("dzd-web-search", true, {
+    initializeWithValue: false,
+  });
+  const toolSettings = useMemo(
+    () =>
+      resolveToolSettings({
+        webSearch: legacyWebSearch !== false,
+        ...storedTools,
+      }),
+    [legacyWebSearch, storedTools]
+  );
+  const setToolEnabled = useCallback(
+    (id: ToolGroupId, enabled: boolean) => {
+      setStoredTools((previous) => ({
+        ...toolSettings,
+        ...previous,
+        [id]: enabled,
+      }));
+    },
+    [setStoredTools, toolSettings]
   );
   const [storedReasoning, setReasoningLevel] =
     useLocalStorage<ReasoningLevel | null>("dzd-reasoning", null, {
@@ -111,17 +138,20 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   )
     ? (storedReasoning as ReasoningLevel)
     : undefined;
+  // Includes models discovered by the server (NVIDIA), so the reasoning
+  // control follows whichever model is selected.
+  const { models: selectableModels } = useChatModels();
   const reasoningLevel = resolveReasoningLevel(
-    chatModels.find((model) => model.id === currentModelId),
+    selectableModels.find((model) => model.id === currentModelId),
     reasoningPreference
   );
 
-  const webSearchEnabledRef = useRef(webSearchEnabled);
+  const toolSettingsRef = useRef(toolSettings);
   const reasoningLevelRef = useRef(reasoningLevel);
   useEffect(() => {
-    webSearchEnabledRef.current = webSearchEnabled !== false;
+    toolSettingsRef.current = toolSettings;
     reasoningLevelRef.current = reasoningLevel;
-  }, [webSearchEnabled, reasoningLevel]);
+  }, [toolSettings, reasoningLevel]);
 
   const { data: chatData, isLoading } = useSWR(
     isNewChat
@@ -209,7 +239,8 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
               : { message: lastMessage }),
             selectedChatModel: currentModelIdRef.current,
             selectedVisibilityType: visibility,
-            webSearch: webSearchEnabledRef.current,
+            tools: toolSettingsRef.current,
+            webSearch: toolSettingsRef.current.webSearch,
             ...(reasoningLevelRef.current && {
               reasoning: reasoningLevelRef.current,
             }),
@@ -316,13 +347,13 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       setMessages,
       setReasoningLevel,
       setShowCreditCardAlert,
-      setWebSearchEnabled,
+      setToolEnabled,
       showCreditCardAlert,
       status,
       stop,
+      toolSettings,
       visibilityType: visibility,
       votes,
-      webSearchEnabled: webSearchEnabled !== false,
     }),
     [
       chatId,
@@ -341,8 +372,8 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       votes,
       currentModelId,
       showCreditCardAlert,
-      webSearchEnabled,
-      setWebSearchEnabled,
+      toolSettings,
+      setToolEnabled,
       reasoningLevel,
       setReasoningLevel,
     ]

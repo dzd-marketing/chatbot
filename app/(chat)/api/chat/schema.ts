@@ -34,7 +34,16 @@ export const postRequestBodySchema = z.object({
   reasoning: z.enum(reasoningLevels).optional(),
   selectedChatModel: z.string(),
   selectedVisibilityType: z.enum(["public", "private"]),
-  // Web search is on by default; older clients that omit the flag keep it on.
+  // The Tools menu (lib/ai/tool-groups.ts). Missing tools stay on.
+  tools: z
+    .object({
+      documents: z.boolean().optional(),
+      weather: z.boolean().optional(),
+      webFetch: z.boolean().optional(),
+      webSearch: z.boolean().optional(),
+    })
+    .optional(),
+  // Older clients only send this flag; web search stays on when omitted.
   webSearch: z.boolean().optional().default(true),
 });
 

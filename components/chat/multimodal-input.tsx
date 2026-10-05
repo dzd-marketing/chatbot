@@ -22,12 +22,10 @@ import {
   type SetStateAction,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
 import { toast } from "sonner";
-import useSWR from "swr";
 import { useLocalStorage, useWindowSize } from "usehooks-ts";
 import {
   ModelSelector,
@@ -40,9 +38,9 @@ import {
   ModelSelectorName,
   ModelSelectorTrigger,
 } from "@/components/ai-elements/model-selector";
+import { useChatModel, useChatModels } from "@/hooks/use-chat-models";
 import {
   type ChatModel,
-  chatModels,
   DEFAULT_CHAT_MODEL,
   type ModelCapabilities,
 } from "@/lib/ai/models";
@@ -59,7 +57,7 @@ import {
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { AnimatedPlaceholder } from "./animated-placeholder";
-import { ReasoningDropdown, WebSearchToggle } from "./composer-controls";
+import { ReasoningDropdown, ToolsDropdown } from "./composer-controls";
 import { DzdLogoMark, PaperclipIcon, StopIcon } from "./icons";
 import { PreviewAttachment } from "./preview-attachment";
 import {
@@ -494,6 +492,7 @@ function PureMultimodalInput({
       ) : null}
 
       <input
+        accept="image/jpeg,image/png"
         className="pointer-events-none fixed -top-4 -left-4 size-0.5 opacity-0"
         multiple
         onChange={handleFileChange}
@@ -571,7 +570,7 @@ function PureMultimodalInput({
               selectedModelId={selectedModelId}
             />
             <ReasoningDropdown />
-            <WebSearchToggle />
+            <ToolsDropdown />
           </PromptInputTools>
 
           {status === "submitted" ? (
@@ -698,15 +697,8 @@ function PureAttachmentsButton({
   status: UseChatHelpers<ChatMessage>["status"];
   selectedModelId: string;
 }) {
-  const { data: modelsResponse } = useSWR(
-    `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models`,
-    (url: string) => fetch(url).then((r) => r.json()),
-    { dedupingInterval: 3_600_000, revalidateOnFocus: false }
-  );
-
-  const caps: Record<string, ModelCapabilities> | undefined =
-    modelsResponse?.capabilities ?? modelsResponse;
-  const hasVision = caps?.[selectedModelId]?.vision ?? false;
+  const { capabilities, model } = useChatModel(selectedModelId);
+  const hasVision = capabilities?.vision ?? false;
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
@@ -715,8 +707,9 @@ function PureAttachmentsButton({
     [fileInputRef]
   );
 
-  return (
+  const button = (
     <Button
+      aria-label="Attach images"
       className={cn(
         "h-7 w-7 rounded-lg border border-border/40 p-1 transition-colors",
         hasVision
@@ -730,6 +723,21 @@ function PureAttachmentsButton({
     >
       <PaperclipIcon size={14} style={{ height: 14, width: 14 }} />
     </Button>
+  );
+
+  // A disabled button gets no pointer events, so the tooltip is attached
+  // to a wrapper. Explains why attaching isn't possible.
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">{button}</span>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={8}>
+        {hasVision
+          ? "Attach images (JPEG or PNG, up to 5 MB)"
+          : `${model?.name ?? "This model"} can't read images. Choose a model with the eye icon.`}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -857,24 +865,13 @@ function PureModelSelectorCompact({
   onModelChange?: (modelId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const { data: modelsData } = useSWR(
-    `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models`,
-    (url: string) => fetch(url).then((r) => r.json()),
-    { dedupingInterval: 3_600_000, revalidateOnFocus: false }
-  );
-
-  const capabilities: Record<string, ModelCapabilities> | undefined =
-    modelsData?.capabilities ?? modelsData;
-  const dynamicModels: ChatModel[] | undefined = modelsData?.models;
   // Selectable models: the curated list plus NVIDIA models discovered by
   // the server (/api/models "extraModels").
-  const availableModels = useMemo(() => {
-    const extra: ChatModel[] = Array.isArray(modelsData?.extraModels)
-      ? modelsData.extraModels
-      : [];
-    const curatedIds = new Set(chatModels.map((m) => m.id));
-    return [...chatModels, ...extra.filter((m) => !curatedIds.has(m.id))];
-  }, [modelsData]);
+  const {
+    capabilities,
+    demoModels: dynamicModels,
+    models: availableModels,
+  } = useChatModels();
   const lookupModels = dynamicModels
     ? [...availableModels, ...dynamicModels]
     : availableModels;

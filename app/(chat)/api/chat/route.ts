@@ -1,4 +1,4 @@
-import { geolocation, ipAddress } from "@vercel/functions";
+import { geolocation } from "@vercel/functions";
 import {
   convertToModelMessages,
   createUIMessageStream,
@@ -12,7 +12,7 @@ import {
 import { checkBotId } from "botid/server";
 import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
-import { auth, type UserType } from "@/app/(auth)/auth";
+import { auth } from "@/app/(auth)/auth";
 import { findChatModel, getAllCapabilities } from "@/lib/ai/available-models";
 import {
   DZD_HISTORY_MESSAGES,
@@ -20,7 +20,6 @@ import {
   getDzdMaxTokens,
   isDzdModel,
 } from "@/lib/ai/dzd";
-import { entitlementsByUserType } from "@/lib/ai/entitlements";
 import {
   chatModels,
   DEFAULT_CHAT_MODEL,
@@ -34,18 +33,18 @@ import {
   getReasoningProviderOptions,
 } from "@/lib/ai/providers";
 import { generateFollowUpSuggestions } from "@/lib/ai/suggestions";
+import { activeToolNames, resolveToolSettings } from "@/lib/ai/tool-groups";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import { updateDocument } from "@/lib/ai/tools/update-document";
-import { webFetch, webSearch, webToolNames } from "@/lib/ai/tools/web";
+import { webFetch, webSearch } from "@/lib/ai/tools/web";
 import { isProductionEnvironment, isTestEnvironment } from "@/lib/constants";
 import {
   createStreamId,
   deleteChatById,
   getChatById,
-  getMessageCountByUserId,
   getMessagesByChatId,
   saveChat,
   saveMessages,
@@ -54,7 +53,6 @@ import {
 } from "@/lib/db/queries";
 import type { DBMessage } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
-import { checkIpRateLimit } from "@/lib/ratelimit";
 import type {
   ChatMessage,
   DzdActivityData,
@@ -115,6 +113,7 @@ export async function POST(request: Request) {
       reasoning,
       selectedChatModel,
       selectedVisibilityType,
+      tools: requestedTools,
       webSearch: webSearchRequested,
     } = requestBody;
 
@@ -135,18 +134,7 @@ export async function POST(request: Request) {
     const requestedModel = await findChatModel(selectedChatModel);
     const chatModel = requestedModel ? selectedChatModel : DEFAULT_CHAT_MODEL;
 
-    await checkIpRateLimit(ipAddress(request));
-
-    const userType: UserType = session.user.type;
-
-    const messageCount = await getMessageCountByUserId({
-      differenceInHours: 1,
-      id: session.user.id,
-    });
-
-    if (messageCount > entitlementsByUserType[userType].maxMessagesPerHour) {
-      return new ChatbotError("rate_limit:chat").toResponse();
-    }
+    // No message limits: students can chat as much as they need.
 
     const isToolApprovalFlow = Boolean(messages);
 
@@ -237,7 +225,11 @@ export async function POST(request: Request) {
     const capabilities = modelCapabilities[chatModel];
     const isReasoningModel = capabilities?.reasoning === true;
     const supportsTools = capabilities?.tools === true;
-    const webToolsEnabled = supportsTools && webSearchRequested;
+    // The student's Tools menu; older clients only send `webSearch`.
+    const toolSettings = resolveToolSettings({
+      webSearch: webSearchRequested,
+      ...requestedTools,
+    });
     const reasoningLevel = resolveReasoningLevel(modelConfig, reasoning);
     const isDzd = isDzdModel(chatModel);
     const builtInWebSearch = capabilities?.builtInWebSearch === true;
@@ -350,16 +342,8 @@ export async function POST(request: Request) {
         const result = streamText({
           // Models without tool support get no tools at all (llama.cpp, for
           // one, rejects requests that include tools unless --jinja is set).
-          activeTools: supportsTools
-            ? [
-                "getWeather",
-                "createDocument",
-                "editDocument",
-                "updateDocument",
-                "requestSuggestions",
-                ...(webToolsEnabled ? webToolNames : []),
-              ]
-            : [],
+          // Otherwise, only the tools the student left on.
+          activeTools: supportsTools ? activeToolNames(toolSettings) : [],
           // Release text word by word at a steady pace, so the client's
           // word blur-in animation follows reading rhythm instead of bursts.
           experimental_transform: smoothStream({
@@ -368,9 +352,11 @@ export async function POST(request: Request) {
           }),
           instructions: systemPrompt({
             builtInWebSearch,
+            documents: toolSettings.documents,
+            pageReading: toolSettings.webFetch,
             requestHints,
             supportsTools,
-            webSearch: webSearchRequested,
+            webSearch: toolSettings.webSearch,
           }),
           ...(isDzd && {
             // Stop the Space's work when the student stops or leaves.

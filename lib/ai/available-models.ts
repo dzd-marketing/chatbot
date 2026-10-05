@@ -7,7 +7,12 @@ import {
   getCapabilities,
   type ModelCapabilities,
 } from "./models";
-import { getNvidiaModels, isNvidiaModel, nvidiaCapabilities } from "./nvidia";
+import {
+  getNvidiaModels,
+  isNvidiaModel,
+  NVIDIA_MODEL_PREFIX,
+  nvidiaCapabilities,
+} from "./nvidia";
 
 /**
  * Server-side model registry: the curated models in lib/ai/models.ts plus
@@ -37,7 +42,10 @@ export async function getAllCapabilities(): Promise<
   ]);
   return {
     ...Object.fromEntries(
-      nvidiaModels.map((model) => [model.id, nvidiaCapabilities])
+      nvidiaModels.map((model) => [
+        model.id,
+        nvidiaCapabilities(model.id.slice(NVIDIA_MODEL_PREFIX.length)),
+      ])
     ),
     ...curated,
   };

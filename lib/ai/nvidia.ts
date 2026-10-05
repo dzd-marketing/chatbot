@@ -5,15 +5,17 @@ import type {
   LanguageModelV4StreamResult,
 } from "@ai-sdk/provider";
 import { APICallError, RetryError, wrapLanguageModel } from "ai";
-import type { ChatModel, ModelCapabilities } from "./models";
+import type { ChatModel, ModelCapabilities, ReasoningConfig } from "./models";
 
 /**
  * NVIDIA API catalog (build.nvidia.com): an OpenAI-compatible API at
- * https://integrate.api.nvidia.com/v1, authenticated with NVIDIA_API_KEY
- * (server-side only, never sent to the browser).
+ * https://integrate.api.nvidia.com/v1, authenticated with NVIDIA_API_KEY and
+ * optional extra keys NVIDIA_API_KEY_1, NVIDIA_API_KEY_2, ... (server-side
+ * only, never sent to the browser). Requests are spread across the keys, and
+ * a key that is rate limited or not allowed to use a model is skipped.
  *
  * The chat models are discovered automatically from GET /v1/models
- * (refreshed daily). NVIDIA's list has no "free" flag and also includes
+ * (refreshed hourly). NVIDIA's list has no "free" flag and also includes
  * embedding, safety, parsing and other non-chat models, so those are
  * filtered out by name. Our model IDs are "nvidia/<NVIDIA model id>".
  */
@@ -21,14 +23,146 @@ import type { ChatModel, ModelCapabilities } from "./models";
 export const NVIDIA_MODEL_PREFIX = "nvidia/";
 const DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1";
 
-const LIST_REVALIDATE_SECONDS = 86_400;
 const LIST_TIMEOUT_MS = 8000;
-const MEMORY_TTL_MS = 10 * 60 * 1000;
+const MEMORY_TTL_MS = 60 * 60 * 1000;
 
 export const isNvidiaModel = (modelId: string) =>
   modelId.startsWith(NVIDIA_MODEL_PREFIX);
 
-export const hasNvidiaKey = () => Boolean(process.env.NVIDIA_API_KEY);
+/* -------------------------------------------------------------------------- */
+/*                                  API keys                                  */
+/* -------------------------------------------------------------------------- */
+
+const KEY_NAME = /^NVIDIA_API_KEY(?:_?(\d+))?$/;
+
+/**
+ * Every configured key: NVIDIA_API_KEY first, then NVIDIA_API_KEY_1,
+ * NVIDIA_API_KEY_2, ... in number order. Empty and duplicate values are
+ * ignored.
+ */
+export function getNvidiaKeys(): string[] {
+  const named: { order: number; value: string }[] = [];
+  for (const [name, raw] of Object.entries(process.env)) {
+    const match = KEY_NAME.exec(name);
+    const value = raw?.trim();
+    if (match && value) {
+      named.push({ order: match[1] ? Number(match[1]) : -1, value });
+    }
+  }
+  named.sort((a, b) => a.order - b.order);
+  return [...new Set(named.map((key) => key.value))];
+}
+
+export const hasNvidiaKey = () => getNvidiaKeys().length > 0;
+
+/** Skip a key after a rate limit (when NVIDIA doesn't say how long). */
+const RATE_LIMIT_COOLDOWN_MS = 30_000;
+/** Skip a key that was refused (bad key or no access to that model). */
+const REFUSED_COOLDOWN_MS = 10 * 60_000;
+const MAX_COOLDOWN_MS = 5 * 60_000;
+
+/**
+ * "key|model" (refused for one model) or "key|*" (rate limited or invalid,
+ * which applies to the whole account) -> time until which it is skipped.
+ */
+const keyCooldowns = new Map<string, number>();
+let nextKeyIndex = 0;
+
+function cooldownFor(response: Response) {
+  if (response.status !== 429) {
+    return REFUSED_COOLDOWN_MS;
+  }
+  const retryAfter = response.headers.get("retry-after");
+  const seconds = retryAfter ? Number(retryAfter) : Number.NaN;
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.min(seconds * 1000, MAX_COOLDOWN_MS);
+  }
+  const date = retryAfter ? Date.parse(retryAfter) : Number.NaN;
+  if (Number.isFinite(date) && date > Date.now()) {
+    return Math.min(date - Date.now(), MAX_COOLDOWN_MS);
+  }
+  return RATE_LIMIT_COOLDOWN_MS;
+}
+
+const ANY_MODEL = "*";
+
+/** Rate limits and invalid keys affect every model of that account. */
+const cooldownScope = (status: number, model: string) =>
+  status === 429 || status === 401 ? ANY_MODEL : model;
+
+function isCoolingDown(key: string, model: string, now: number) {
+  return (
+    (keyCooldowns.get(`${key}|${ANY_MODEL}`) ?? 0) > now ||
+    (keyCooldowns.get(`${key}|${model}`) ?? 0) > now
+  );
+}
+
+/** Statuses where another key (another account) may succeed. */
+const shouldTryNextKey = (status: number) =>
+  status === 429 || status === 401 || status === 403 || status === 404;
+
+function requestedModel(body: RequestInit["body"]) {
+  if (typeof body !== "string") {
+    return "";
+  }
+  try {
+    const parsed = JSON.parse(body) as { model?: unknown };
+    return typeof parsed.model === "string" ? parsed.model : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * fetch() that adds an NVIDIA key. Keys take turns (round robin); on a rate
+ * limit or refusal the same request is sent with the next key, and that key
+ * is skipped for a while for that model. If every key fails, the last
+ * response is returned so the usual error handling applies.
+ */
+function fetchWithNvidiaKeys(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): Promise<Response> {
+  const keys = getNvidiaKeys();
+  if (keys.length === 0) {
+    return Promise.reject(
+      new Error("Missing NVIDIA_API_KEY environment variable")
+    );
+  }
+  const model = requestedModel(init?.body);
+  const start = nextKeyIndex % keys.length;
+  nextKeyIndex = (start + 1) % keys.length;
+
+  const now = Date.now();
+  const rotated = keys.map((_, offset) => keys[(start + offset) % keys.length]);
+  const ready = rotated.filter((key) => !isCoolingDown(key, model, now));
+  const cooling = rotated.filter((key) => !ready.includes(key));
+  // Keys that are cooling down are still tried last, rather than failing.
+  const order = [...ready, ...cooling];
+
+  const attempt = async (index: number): Promise<Response> => {
+    const key = order[index];
+    const headers = new Headers(init?.headers);
+    headers.set("Authorization", `Bearer ${key}`);
+    const response = await fetch(input, { ...init, headers });
+    const isLast = index === order.length - 1;
+    if (isLast || !shouldTryNextKey(response.status)) {
+      if (response.ok) {
+        keyCooldowns.delete(`${key}|${model}`);
+        keyCooldowns.delete(`${key}|${ANY_MODEL}`);
+      }
+      return response;
+    }
+    keyCooldowns.set(
+      `${key}|${cooldownScope(response.status, model)}`,
+      Date.now() + cooldownFor(response)
+    );
+    await response.body?.cancel().catch(() => undefined);
+    return attempt(index + 1);
+  };
+
+  return attempt(0);
+}
 
 function getNvidiaBaseUrl() {
   return (process.env.NVIDIA_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, "");
@@ -130,9 +264,10 @@ type NvidiaListedModel = { id?: unknown };
 let memoryCache: { at: number; models: ChatModel[] } | null = null;
 
 async function fetchNvidiaModelList(): Promise<ChatModel[]> {
-  const response = await fetch(`${getNvidiaBaseUrl()}/models`, {
-    headers: { Authorization: `Bearer ${process.env.NVIDIA_API_KEY}` },
-    next: { revalidate: LIST_REVALIDATE_SECONDS },
+  const response = await fetchWithNvidiaKeys(`${getNvidiaBaseUrl()}/models`, {
+    // Not stored in Next's data cache, which outlives deployments and could
+    // keep an empty or failed result; the in-memory cache below is enough.
+    cache: "no-store",
     signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
   });
   if (!response.ok) {
@@ -156,20 +291,22 @@ async function fetchNvidiaModelList(): Promise<ChatModel[]> {
       continue;
     }
     seen.add(id);
+    const reasoning = nvidiaReasoningConfig(id);
     models.push({
       description: `${id} · via NVIDIA`,
       id: `${NVIDIA_MODEL_PREFIX}${id}`,
       name: prettifyModelName(id),
       provider: "nvidia",
+      ...(reasoning ? { reasoning } : {}),
     });
   }
   return models;
 }
 
 /**
- * NVIDIA chat models, or [] when NVIDIA_API_KEY isn't set. Cached (Next.js
- * data cache for a day, plus a short in-memory cache). If NVIDIA can't be
- * reached, the last good list is kept.
+ * NVIDIA chat models, or [] when no NVIDIA key is set. Cached in memory
+ * for an hour. If NVIDIA can't be reached, the last good list is kept and
+ * the failure is logged (visible in Vercel's function logs).
  */
 export async function getNvidiaModels(): Promise<ChatModel[]> {
   if (!hasNvidiaKey()) {
@@ -182,29 +319,127 @@ export async function getNvidiaModels(): Promise<ChatModel[]> {
     const models = await fetchNvidiaModelList();
     memoryCache = { at: Date.now(), models };
     return models;
-  } catch {
+  } catch (error) {
+    console.warn(
+      "NVIDIA model list unavailable:",
+      error instanceof Error ? error.message : error
+    );
     return memoryCache?.models ?? [];
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                Capabilities                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * NVIDIA's model list doesn't say what each model can do, so this is
+ * worked out from the model name (family and version).
+ */
+
+/** Models that accept images. */
+const VISION_PATTERNS = [
+  /vision/,
+  /(^|[-_/])vl([-_]|$)/,
+  /vlm/,
+  /omni/,
+  /multimodal/,
+  /gemma-3-(4|12|27)b/,
+  /gemma-3n/,
+  /gemma-4/,
+  /llama-4/,
+  /kimi-k2\.[5-9]/,
+  /kimi-k3/,
+  /mistral-small-3\.[1-9]/,
+  /mistral-medium-3/,
+  /pixtral/,
+];
+
+/** Thinking can be switched on/off (chat_template_kwargs). */
+const THINKING_TOGGLE_PATTERNS = [
+  /nemotron-3/,
+  /nemotron-nano-3/,
+  /\/qwen3(?!.*instruct-2507)/,
+  /\/glm-4\.[5-9]/,
+  /\/glm-[5-9]/,
+  /deepseek-v3\.[1-9]/,
+  /deepseek-v[4-9]/,
+  /gemma-4/,
+  /kimi-k2\.[5-9]/,
+  /kimi-k3/,
+  /seed-oss/,
+];
+
+/** Thinking effort can be chosen (reasoning_effort). */
+const REASONING_EFFORT_PATTERNS = [/\/gpt-oss-/];
+
+/** Always think; there is nothing to switch. */
+const ALWAYS_THINKING_PATTERNS = [
+  /(^|[-/])r1([-_]|$)/,
+  /qwq/,
+  /thinking/,
+  /magistral/,
+  /reasoning/,
+];
+
+const matchesAny = (patterns: RegExp[], id: string) =>
+  patterns.some((pattern) => pattern.test(id));
+
+/** How the reasoning control works for an NVIDIA model id (no prefix). */
+export function nvidiaReasoningConfig(id: string): ReasoningConfig | undefined {
+  const lower = id.toLowerCase();
+  if (matchesAny(REASONING_EFFORT_PATTERNS, lower)) {
+    return { control: "effort", defaultLevel: "low" };
+  }
+  if (matchesAny(THINKING_TOGGLE_PATTERNS, lower)) {
+    return { control: "toggle", defaultLevel: "high" };
   }
 }
 
 /**
  * Tools are tried on every NVIDIA model (web search); models that reject
- * them are retried without tools (see createNvidiaModel). NVIDIA models are
- * used as text-only here, and have no reasoning control.
+ * them are retried without tools (see createNvidiaModel).
  */
-export const nvidiaCapabilities: ModelCapabilities = {
-  reasoning: false,
-  tools: true,
-  vision: false,
-};
+export function nvidiaCapabilities(id: string): ModelCapabilities {
+  const lower = id.toLowerCase();
+  return {
+    reasoning:
+      Boolean(nvidiaReasoningConfig(lower)) ||
+      matchesAny(ALWAYS_THINKING_PATTERNS, lower),
+    tools: true,
+    vision: matchesAny(VISION_PATTERNS, lower),
+  };
+}
+
+/** The NVIDIA request options for a reasoning level. */
+export function nvidiaReasoningOptions(
+  config: ReasoningConfig | undefined,
+  level: "off" | "low" | "medium" | "high"
+): Record<string, Record<string, unknown>> {
+  if (!config) {
+    return {};
+  }
+  if (config.control === "effort") {
+    return { nvidia: { reasoningEffort: level === "off" ? "low" : level } };
+  }
+  const thinking = level !== "off";
+  // Different chat templates use different names for the same switch.
+  return {
+    nvidia: { chat_template_kwargs: { enable_thinking: thinking, thinking } },
+  };
+}
 
 /* -------------------------------------------------------------------------- */
 /*                         Language model with fallbacks                      */
 /* -------------------------------------------------------------------------- */
 
-/** Models seen rejecting tools / the system role (per server instance). */
+/**
+ * Models seen rejecting tools / the system role / the reasoning options
+ * (per server instance).
+ */
 const noToolModels = new Set<string>();
 const noSystemRoleModels = new Set<string>();
+const noReasoningOptionModels = new Set<string>();
 
 const TOOLS_UNAVAILABLE_NOTE =
   "Note for this reply: web search, page reading and document tools are not available with this model. Do not say or imply that you searched the web, read a page, or created a document. Answer from your own knowledge, and say so when information may be out of date.";
@@ -289,9 +524,22 @@ function withoutSystemRole(params: LanguageModelV4CallOptions) {
   return { ...params, prompt };
 }
 
+function hasReasoningOptions(params: LanguageModelV4CallOptions) {
+  const options = params.providerOptions?.nvidia;
+  return Boolean(
+    options &&
+      ("chat_template_kwargs" in options || "reasoningEffort" in options)
+  );
+}
+
+function withoutReasoningOptions(params: LanguageModelV4CallOptions) {
+  const { nvidia: _removed, ...providerOptions } = params.providerOptions ?? {};
+  return { ...params, providerOptions };
+}
+
 /**
- * The request to retry with when a model rejected tools or the system role,
- * or null when the error isn't one of those.
+ * The request to retry with when a model rejected tools, the system role or
+ * the reasoning options, or null when the error isn't one of those.
  */
 function fallbackParams(
   nvidiaId: string,
@@ -313,6 +561,10 @@ function fallbackParams(
     noSystemRoleModels.add(nvidiaId);
     return withoutSystemRole(params);
   }
+  if (isClientError(apiError) && hasReasoningOptions(params)) {
+    noReasoningOptionModels.add(nvidiaId);
+    return withoutReasoningOptions(params);
+  }
   return null;
 }
 
@@ -320,17 +572,19 @@ let nvidiaProvider: ReturnType<typeof createOpenAICompatible> | null = null;
 
 function getProvider() {
   nvidiaProvider ??= createOpenAICompatible({
-    apiKey: process.env.NVIDIA_API_KEY,
     baseURL: getNvidiaBaseUrl(),
+    // Adds the API key, switching keys on rate limits (see above).
+    fetch: fetchWithNvidiaKeys,
     name: "nvidia",
   });
   return nvidiaProvider;
 }
 
 /**
- * An NVIDIA chat model ("nvidia/<id>"). If the model rejects tools or the
- * system role, the request is retried once without them, and that model is
- * remembered so later requests skip the failing attempt.
+ * An NVIDIA chat model ("nvidia/<id>"). If the model rejects tools, the
+ * system role or the reasoning options, the request is retried without them,
+ * and that model is remembered so later requests skip the failing attempt.
+ * Image URLs are passed through as links (NVIDIA fetches them).
  */
 export function createNvidiaModel(modelId: string) {
   if (!hasNvidiaKey()) {
@@ -340,6 +594,7 @@ export function createNvidiaModel(modelId: string) {
 
   return wrapLanguageModel({
     middleware: {
+      overrideSupportedUrls: () => ({ "image/*": [/^https:\/\/.+/] }),
       wrapStream: ({ params, model }) => {
         let current = params;
         if (noToolModels.has(nvidiaId) && current.tools?.length) {
@@ -347,6 +602,9 @@ export function createNvidiaModel(modelId: string) {
         }
         if (noSystemRoleModels.has(nvidiaId)) {
           current = withoutSystemRole(current);
+        }
+        if (noReasoningOptionModels.has(nvidiaId)) {
+          current = withoutReasoningOptions(current);
         }
 
         const run = async (
@@ -365,7 +623,7 @@ export function createNvidiaModel(modelId: string) {
           }
         };
 
-        return run(current, 2);
+        return run(current, 3);
       },
     },
     model: getProvider()(nvidiaId),

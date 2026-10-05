@@ -1,7 +1,17 @@
 "use client";
 
 import { AnimatePresence, motion, type Transition } from "framer-motion";
-import { CheckIcon, ChevronDownIcon, GlobeIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  CloudSunIcon,
+  FileTextIcon,
+  GlobeIcon,
+  LinkIcon,
+  type LucideIcon,
+  WrenchIcon,
+} from "lucide-react";
+import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
@@ -12,15 +22,18 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import useSWR from "swr";
 import { useActiveChat } from "@/hooks/use-active-chat";
+import { useChatModel } from "@/hooks/use-chat-models";
 import {
-  chatModels,
   getReasoningOptions,
-  type ModelCapabilities,
   type ReasoningLevel,
   type ReasoningOption,
 } from "@/lib/ai/models";
+import {
+  type ToolGroup,
+  type ToolGroupId,
+  toolGroups,
+} from "@/lib/ai/tool-groups";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
@@ -34,81 +47,219 @@ const panelSpring: Transition = {
 const VIEWPORT_MARGIN = 12;
 const PANEL_OFFSET = 8;
 
-/** Shares the /api/models request (and SWR cache) with the model selector. */
-function useModelCapabilities() {
-  const { data } = useSWR(
-    `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models`,
-    (url: string) => fetch(url).then((r) => r.json()),
-    { dedupingInterval: 3_600_000, revalidateOnFocus: false }
+/* -------------------------------------------------------------------------- */
+/*                                   Tools                                    */
+/* -------------------------------------------------------------------------- */
+
+const TOOL_ICONS: Record<ToolGroupId, LucideIcon> = {
+  documents: FileTextIcon,
+  weather: CloudSunIcon,
+  webFetch: LinkIcon,
+  webSearch: GlobeIcon,
+};
+
+function ToolSwitch({ on }: { on: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full transition-colors duration-200",
+        on ? "bg-brand" : "bg-muted-foreground/25"
+      )}
+    >
+      <span
+        className={cn(
+          "absolute top-[2px] left-[2px] size-[14px] rounded-full bg-white shadow-sm transition-transform duration-200",
+          on && "translate-x-[14px]"
+        )}
+      />
+    </span>
   );
-  return (data?.capabilities ?? data) as
-    | Record<string, ModelCapabilities>
-    | undefined;
 }
 
-/* -------------------------------------------------------------------------- */
-/*                                Web search                                  */
-/* -------------------------------------------------------------------------- */
+function ToolRow({
+  group,
+  checked,
+  disabled,
+  note,
+  onToggle,
+}: {
+  group: ToolGroup;
+  checked: boolean;
+  disabled: boolean;
+  note?: string;
+  onToggle: (id: ToolGroupId, enabled: boolean) => void;
+}) {
+  const Icon = TOOL_ICONS[group.id];
 
-export function WebSearchToggle() {
-  const { currentModelId, webSearchEnabled, setWebSearchEnabled } =
-    useActiveChat();
-  const capabilities = useModelCapabilities();
-  // Assume support until capabilities load, so the default "on" state
-  // doesn't flicker.
-  const supportsTools = capabilities?.[currentModelId]?.tools ?? true;
-  // Models with their own server-side search (DZD Learn AI) decide by
-  // themselves when to search, so the toggle shows "on" and is locked.
-  const builtIn = capabilities?.[currentModelId]?.builtInWebSearch === true;
-  const canToggle = supportsTools && !builtIn;
-  const active = builtIn || (webSearchEnabled && supportsTools);
-
-  const handleClick = useCallback(() => {
-    if (!canToggle) {
-      return;
-    }
-    setWebSearchEnabled(!webSearchEnabled);
-  }, [canToggle, setWebSearchEnabled, webSearchEnabled]);
-
-  let hint = "Web search is off";
-  if (builtIn) {
-    hint = "Built-in web search: DZD Learn AI looks things up when needed";
-  } else if (!supportsTools) {
-    hint = "This model can't search the web";
-  } else if (active) {
-    hint = "Web search is on: DZD AI can look things up and cite sources";
-  }
+  const handleCheckedChange = useCallback(
+    (value: boolean) => onToggle(group.id, value),
+    [group.id, onToggle]
+  );
+  // Keep the menu open so several tools can be switched in one go.
+  const handleSelect = useCallback(
+    (event: Event) => event.preventDefault(),
+    []
+  );
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
+    <DropdownMenuPrimitive.CheckboxItem
+      checked={checked}
+      className="group flex cursor-default select-none items-center gap-2.5 rounded-lg px-2.5 py-2 outline-hidden transition-colors duration-150 focus:bg-muted/70 data-disabled:cursor-not-allowed data-disabled:opacity-55"
+      data-testid={`tool-${group.id}`}
+      disabled={disabled}
+      onCheckedChange={handleCheckedChange}
+      onSelect={handleSelect}
+    >
+      <span
+        className={cn(
+          "flex size-7 shrink-0 items-center justify-center rounded-md border transition-colors duration-200",
+          checked
+            ? "border-brand/25 bg-brand/10 text-brand"
+            : "border-border/50 text-muted-foreground"
+        )}
+      >
+        <Icon className="size-3.5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-medium text-[13px] text-foreground leading-tight">
+          {group.label}
+        </span>
+        <span className="mt-0.5 block text-[11.5px] text-muted-foreground leading-snug">
+          {note ?? group.description}
+        </span>
+      </span>
+      <ToolSwitch on={checked} />
+    </DropdownMenuPrimitive.CheckboxItem>
+  );
+}
+
+export function ToolsDropdown() {
+  const { currentModelId, toolSettings, setToolEnabled } = useActiveChat();
+  const { capabilities, model } = useChatModel(currentModelId);
+  // Assume support until capabilities load, so the default "on" state
+  // doesn't flicker.
+  const supportsTools = capabilities?.tools ?? true;
+  // Models with their own server-side search (DZD Learn AI) decide by
+  // themselves when to search; the website's tools can't be used.
+  const builtIn = capabilities?.builtInWebSearch === true;
+  const modelName = model?.name ?? "This model";
+
+  const enabledCount = supportsTools
+    ? toolGroups.filter((group) => toolSettings[group.id]).length
+    : 0;
+  const active = builtIn || enabledCount > 0;
+
+  if (!supportsTools && !builtIn) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            aria-disabled="true"
+            aria-label="Tools are not available with this model"
+            className="inline-flex h-7 shrink-0 cursor-not-allowed items-center gap-1.5 rounded-full border border-border/40 px-2 text-[12px] font-medium text-muted-foreground opacity-50 sm:px-2.5"
+            data-testid="tools-selector"
+            type="button"
+          >
+            <WrenchIcon className="size-3.5" />
+            <span className="hidden sm:inline">Tools</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={8}>
+          {modelName} can't use tools. Pick another model for web search and
+          documents.
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  let summary = `${enabledCount} of ${toolGroups.length} on`;
+  if (builtIn) {
+    summary = "Built in";
+  } else if (enabledCount === 0) {
+    summary = "All off";
+  }
+
+  const headerNote = builtIn ? `${modelName} searches by itself` : summary;
+
+  return (
+    <DropdownMenuPrimitive.Root>
+      <DropdownMenuPrimitive.Trigger asChild>
         <button
-          aria-disabled={!canToggle}
-          aria-label="Web search"
-          aria-pressed={active}
+          aria-label={`Tools: ${summary}`}
           className={cn(
-            "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2 text-[12px] font-medium transition-colors duration-200 sm:px-2.5",
+            "group inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2 text-[12px] font-medium outline-hidden transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-brand/40 sm:px-2.5",
             active
               ? "border-brand/30 bg-brand/8 text-brand hover:border-brand/45"
-              : "border-border/40 text-muted-foreground hover:border-border hover:text-foreground",
-            builtIn && "cursor-default",
-            !supportsTools &&
-              !builtIn &&
-              "cursor-not-allowed opacity-50 hover:border-border/40 hover:text-muted-foreground"
+              : "border-border/40 text-muted-foreground hover:border-border hover:text-foreground"
           )}
-          data-state={active ? "on" : "off"}
-          data-testid="web-search-toggle"
-          onClick={handleClick}
+          data-state-active={active ? "on" : "off"}
+          data-testid="tools-selector"
           type="button"
         >
-          <GlobeIcon className="size-3.5" />
-          <span className="hidden sm:inline">Search</span>
+          <WrenchIcon className="size-3.5" />
+          <span className="hidden sm:inline">Tools</span>
+          {!builtIn && enabledCount > 0 ? (
+            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-semibold text-brand-foreground tabular-nums">
+              {enabledCount}
+            </span>
+          ) : null}
+          <ChevronDownIcon className="size-3 opacity-70 transition-transform duration-200 group-data-[state=open]:rotate-180" />
         </button>
-      </TooltipTrigger>
-      <TooltipContent side="top" sideOffset={8}>
-        {hint}
-      </TooltipContent>
-    </Tooltip>
+      </DropdownMenuPrimitive.Trigger>
+      <DropdownMenuPrimitive.Portal>
+        <DropdownMenuPrimitive.Content
+          align="start"
+          aria-label="Tools"
+          className="z-[400] w-[min(18rem,calc(100vw-1.5rem))] origin-(--radix-dropdown-menu-content-transform-origin) rounded-xl border border-border/60 bg-card p-1 text-card-foreground shadow-[0_12px_32px_-12px_rgb(0_0_0/0.28),0_2px_6px_-2px_rgb(0_0_0/0.12)] data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 duration-100"
+          collisionPadding={VIEWPORT_MARGIN}
+          side="top"
+          sideOffset={PANEL_OFFSET}
+        >
+          <div className="flex items-baseline justify-between gap-3 px-2.5 pt-1.5 pb-1">
+            <span className="font-semibold text-[12px] text-foreground">
+              Tools
+            </span>
+            <span className="truncate text-[11px] text-muted-foreground">
+              {headerNote}
+            </span>
+          </div>
+          {builtIn ? (
+            <BuiltInSearchRow />
+          ) : (
+            toolGroups.map((group) => (
+              <ToolRow
+                checked={toolSettings[group.id]}
+                disabled={false}
+                group={group}
+                key={group.id}
+                onToggle={setToolEnabled}
+              />
+            ))
+          )}
+        </DropdownMenuPrimitive.Content>
+      </DropdownMenuPrimitive.Portal>
+    </DropdownMenuPrimitive.Root>
+  );
+}
+
+const noopToggle = () => undefined;
+
+/** DZD Learn AI: its server searches the web by itself; nothing to switch. */
+function BuiltInSearchRow() {
+  return (
+    <>
+      <ToolRow
+        checked
+        disabled
+        group={toolGroups[0]}
+        note="Built in: looks things up when needed"
+        onToggle={noopToggle}
+      />
+      <p className="px-2.5 pt-1 pb-1.5 text-[11px] text-muted-foreground leading-snug">
+        Documents and other tools need a different model.
+      </p>
+    </>
   );
 }
 
@@ -249,7 +400,8 @@ type PanelPosition = {
 
 export function ReasoningDropdown() {
   const { currentModelId, reasoningLevel, setReasoningLevel } = useActiveChat();
-  const model = chatModels.find((item) => item.id === currentModelId);
+  // Includes NVIDIA models, so the control follows the selected model.
+  const { model } = useChatModel(currentModelId);
   const options = getReasoningOptions(model);
   const selected =
     options.find((option) => option.value === reasoningLevel) ?? options[0];
