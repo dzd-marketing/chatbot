@@ -30,7 +30,13 @@ const CALL_TIMEOUT_MS = 25_000;
 const MAX_SEARCH_CHARS = 6000;
 const DEFAULT_FETCH_CHARS = 6000;
 const MAX_FETCH_CHARS = 12_000;
-const FOOTER_ALLOWANCE = 600;
+/**
+ * How much of a page is scanned per read (the Space's maximum). Only
+ * maxChars of it is shown to the model, but download links are collected
+ * from all of it: many past paper sites put long menus before the links.
+ */
+const SCAN_CHARS = 40_000;
+const MAX_LISTED_LINKS = 15;
 
 class WebToolError extends Error {}
 
@@ -172,6 +178,130 @@ function parseSearchSources(text: string): WebSource[] {
   return sources;
 }
 
+/** The Space's footer when a page is longer than max_chars. */
+const SPACE_TRUNCATION_FOOTER =
+  /\n*---\n\*\*Content Truncated:\*\*[^\n]*of ([\d,]+)[^\n]*\n\*\*Next cursor:\*\*[^\n]*\n---\s*$/;
+
+/** Links that look like documents or download pages. */
+const DOCUMENT_LINK =
+  /\.pdf([?#]|$)|drive\.google\.com|docs\.google\.com|mediafire\.com|mega\.nz|dropbox\.com|onedrive\.live\.com|1drv\.ms|\/download|[?&]download|wp-content\/uploads/i;
+const DOCUMENT_TEXT = /download|\bpdf\b|marking scheme/i;
+
+const MARKDOWN_LINK = /\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+)\)/g;
+
+type PageLink = { text: string; url: string };
+
+function pageLinks(markdown: string): PageLink[] {
+  const seen = new Set<string>();
+  const links: PageLink[] = [];
+  for (const [, rawText, url] of markdown.matchAll(MARKDOWN_LINK)) {
+    const text = rawText.replace(/\s+/g, " ").trim();
+    if (!(text && !seen.has(url))) {
+      continue;
+    }
+    seen.add(url);
+    links.push({ text, url });
+  }
+  return links;
+}
+
+const linkWords = (value: string) =>
+  value
+    .toLowerCase()
+    .split(/[^a-z0-9\u0D80-\u0DFF\u0B80-\u0BFF]+/)
+    .filter((word) => word.length > 1);
+
+/** Links whose text or URL contain most of the given words. */
+function matchingLinks(links: PageLink[], lookFor: string) {
+  const words = [...new Set(linkWords(lookFor))];
+  if (words.length === 0) {
+    return [];
+  }
+  const needed = Math.max(1, Math.ceil(words.length * 0.6));
+  return links
+    .map((link) => {
+      const haystack =
+        `${link.text} ${decodeURIComponent(link.url)}`.toLowerCase();
+      const hits = words.filter((word) => haystack.includes(word)).length;
+      return { hits, link };
+    })
+    .filter(({ hits }) => hits >= needed)
+    .sort((a, b) => b.hits - a.hits)
+    .map(({ link }) => link);
+}
+
+const formatLinks = (links: PageLink[]) =>
+  links
+    .slice(0, MAX_LISTED_LINKS)
+    .map((link) => `- [${link.text}](${link.url})`)
+    .join("\n");
+
+/** Cuts at a paragraph or sentence end near `limit`. */
+function cutPoint(text: string, limit: number) {
+  if (text.length <= limit) {
+    return text.length;
+  }
+  const head = text.slice(0, limit);
+  const paragraph = head.lastIndexOf("\n\n");
+  if (paragraph > limit * 0.7) {
+    return paragraph;
+  }
+  const line = head.lastIndexOf("\n");
+  return line > limit * 0.8 ? line : limit;
+}
+
+/**
+ * The model-facing page: the first maxChars of the page, then document
+ * links (and links matching `lookFor`) found anywhere in the scanned part,
+ * then where to continue.
+ */
+export function summarizePage({
+  lookFor,
+  maxChars,
+  offset,
+  raw,
+}: {
+  lookFor?: string;
+  maxChars: number;
+  offset: number;
+  raw: string;
+}) {
+  const footer = raw.match(SPACE_TRUNCATION_FOOTER);
+  const scanned = footer ? raw.slice(0, footer.index).trimEnd() : raw;
+  const total = footer ? Number(footer[1].replace(/,/g, "")) : undefined;
+
+  const cut = cutPoint(scanned, maxChars);
+  const shown = scanned.slice(0, cut).trimEnd();
+  const truncated = cut < scanned.length || Boolean(footer);
+
+  const links = pageLinks(scanned);
+  const documents = links.filter(
+    (link) => DOCUMENT_LINK.test(link.url) || DOCUMENT_TEXT.test(link.text)
+  );
+  const matches = lookFor
+    ? matchingLinks(links, lookFor).filter((link) => !documents.includes(link))
+    : [];
+
+  const sections = [shown];
+  if (truncated && (documents.length > 0 || matches.length > 0)) {
+    sections.push("---\nLinks found further down this page (not shown above):");
+  }
+  if (documents.length > 0) {
+    sections.push(`Download and document links:\n${formatLinks(documents)}`);
+  }
+  if (matches.length > 0) {
+    sections.push(`Links matching "${lookFor}":\n${formatLinks(matches)}`);
+  }
+  if (truncated) {
+    const next = offset + cut;
+    const of = total ? ` of ${total.toLocaleString("en-US")}` : "";
+    sections.push(
+      `---\nShowing characters ${offset.toLocaleString("en-US")}-${next.toLocaleString("en-US")}${of}. To read more of this page, call webFetch with offset=${next}.`
+    );
+  }
+  return { content: sections.join("\n\n"), truncated };
+}
+
 /** The Space starts Markdown output with "# <page title>". */
 function parsePageTitle(text: string) {
   const match = text.match(/^#\s+(.+)$/m);
@@ -241,29 +371,30 @@ export const webSearch = tool({
 
 export const webFetch = tool({
   description:
-    "Read a public web page and return its main content as Markdown, including links. Use it on URLs from webSearch results or URLs the student gives you. It cannot read PDFs or images. Share PDF links with the student directly instead of fetching them.",
+    "Read a public web page and return its main content as Markdown, including links. Download and document links (PDF, Google Drive and similar) found anywhere on the page are listed at the end, even when the page is long. Use it on URLs from webSearch results or URLs the student gives you. It cannot read PDFs or images. Share PDF links with the student directly instead of fetching them.",
   execute: async (input, { abortSignal }) => {
     const maxChars = input.maxChars ?? DEFAULT_FETCH_CHARS;
+    const offset = input.offset ?? 0;
     try {
       const text = await callWebTool(
         FETCH_TOOL,
-        // All arguments sent explicitly (see webSearch).
+        // All arguments sent explicitly (see webSearch). A larger part of
+        // the page is scanned for links; only maxChars of it is shown.
         {
-          max_chars: maxChars,
+          max_chars: Math.max(maxChars, SCAN_CHARS),
           mode: "Markdown Mode",
-          offset: input.offset ?? 0,
+          offset,
           strip_selectors: "",
           url: input.url,
         },
         abortSignal
       );
-      // The Space already honours max_chars and appends a "Next cursor"
-      // footer for long pages; this is only a safety cap that leaves room
-      // for that footer.
-      const { text: content, truncated } = truncate(
-        text,
-        maxChars + FOOTER_ALLOWANCE
-      );
+      const { content, truncated } = summarizePage({
+        lookFor: input.lookFor,
+        maxChars,
+        offset,
+        raw: text,
+      });
       return {
         content,
         title: parsePageTitle(text),
@@ -275,6 +406,13 @@ export const webFetch = tool({
     }
   },
   inputSchema: z.object({
+    lookFor: z
+      .string()
+      .max(120)
+      .optional()
+      .describe(
+        "Optional words to look for in the page's links, e.g. '2020 Science for Technology'. Matching links from the whole page are listed at the end."
+      ),
     maxChars: z
       .number()
       .int()

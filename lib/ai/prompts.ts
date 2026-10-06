@@ -166,7 +166,7 @@ ${
 **When to use them**
 - Use them for past papers, model papers, term tests, marking schemes, syllabi, timetables, exam dates, results announcements, news, and any fact that may have changed or that the student wants a source for.
 - Don't search for standard explanations, derivations, or problem solving you can answer from curriculum knowledge.
-- Be efficient: usually one or two searches${pageReading ? " and at most two page reads" : ""} per answer. Use targeted queries that follow the Section 5 source priority, e.g. \`site:pastpapers.wiki 2019 A/L Science for Technology\`. If one source has nothing useful, try the next.
+- Search${pageReading ? " and read pages" : ""} as much as you need to find a good answer: if one site doesn't have it, try the next. Don't repeat the same search${pageReading ? " or re-read the same page" : ""}, and stop once you have what the student asked for. Use targeted queries that follow the Section 5 source priority, e.g. \`site:pastpapers.wiki 2019 A/L Science for Technology\`.
 
 **Honesty**
 - Only share links that appear in your tool results. Never guess, construct, or "fix" a URL.

@@ -28,10 +28,8 @@ import {
 } from "@/lib/ai/models";
 import { isNvidiaModel, nvidiaErrorMessage } from "@/lib/ai/nvidia";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
-import {
-  getLanguageModel,
-  getReasoningProviderOptions,
-} from "@/lib/ai/providers";
+import { getLanguageModel } from "@/lib/ai/providers";
+import { createPrepareStep, MAX_STEPS } from "@/lib/ai/step-limits";
 import { generateFollowUpSuggestions } from "@/lib/ai/suggestions";
 import { activeToolNames, resolveToolSettings } from "@/lib/ai/tool-groups";
 import { createDocument } from "@/lib/ai/tools/create-document";
@@ -96,6 +94,8 @@ function getStreamContext() {
 export { getStreamContext };
 
 export async function POST(request: Request) {
+  // The tool time budget (lib/ai/step-limits.ts) counts from here.
+  const startedAt = Date.now();
   let requestBody: PostRequestBody;
 
   try {
@@ -339,25 +339,28 @@ export async function POST(request: Request) {
           },
         };
 
+        const enabledTools = supportsTools ? activeToolNames(toolSettings) : [];
+        const instructions = systemPrompt({
+          builtInWebSearch,
+          documents: toolSettings.documents,
+          pageReading: toolSettings.webFetch,
+          requestHints,
+          supportsTools,
+          webSearch: toolSettings.webSearch,
+        });
+
         const result = streamText({
           // Models without tool support get no tools at all (llama.cpp, for
           // one, rejects requests that include tools unless --jinja is set).
           // Otherwise, only the tools the student left on.
-          activeTools: supportsTools ? activeToolNames(toolSettings) : [],
+          activeTools: enabledTools,
           // Release text word by word at a steady pace, so the client's
           // word blur-in animation follows reading rhythm instead of bursts.
           experimental_transform: smoothStream({
             chunking: "word",
             delayInMs: 15,
           }),
-          instructions: systemPrompt({
-            builtInWebSearch,
-            documents: toolSettings.documents,
-            pageReading: toolSettings.webFetch,
-            requestHints,
-            supportsTools,
-            webSearch: toolSettings.webSearch,
-          }),
+          instructions,
           ...(isDzd && {
             // Stop the Space's work when the student stops or leaves.
             abortSignal: request.signal,
@@ -379,13 +382,14 @@ export async function POST(request: Request) {
           onError() {
             stopWaitingStatus();
           },
-          providerOptions: {
-            ...(modelConfig?.gatewayOrder && {
-              gateway: { order: modelConfig.gatewayOrder },
-            }),
-            ...getReasoningProviderOptions(modelConfig, reasoningLevel),
-          },
-          stopWhen: isStepCount(5),
+          // No limit on searches or page reads, only on time; the last
+          // step always writes the answer.
+          prepareStep: createPrepareStep({
+            enabledTools,
+            instructions,
+            startedAt,
+          }),
+          stopWhen: isStepCount(MAX_STEPS),
           telemetry: {
             functionId: "stream-text",
             isEnabled: isProductionEnvironment,
