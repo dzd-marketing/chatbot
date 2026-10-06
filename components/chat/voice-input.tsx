@@ -1,8 +1,14 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
-import { CheckIcon, ChevronDownIcon, MicIcon, XIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { ChevronDownIcon, MicIcon, SquareIcon, XIcon } from "lucide-react";
+import {
+  type ComponentProps,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,187 +26,214 @@ import { cn } from "@/lib/utils";
 
 const EASE = [0.32, 0.72, 0, 1] as const;
 
-/* ---------------------------------------------------------------- waveform */
+/*
+ * Dictation, from assistant-ui Elements (MIT):
+ * https://www.assistant-ui.com/elements/composer-voice
+ * Same markup and classes as ComposerVoice / ComposerVoiceButton; the bars
+ * follow the microphone's live loudness instead of a timer-driven sine.
+ */
+const ghostButton =
+  "flex items-center justify-center rounded-full text-foreground/45 outline-none transition-[background-color,color,scale] duration-150 hover:bg-foreground/[0.06] hover:text-foreground/90 active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-foreground/20 motion-reduce:transition-none dark:hover:bg-foreground/[0.09]";
+const inkButton =
+  "bg-foreground text-background transition-[opacity,scale] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:opacity-90 active:scale-[0.96] motion-reduce:transition-none";
+const mono = "font-mono text-[11px] tracking-tight";
 
-const BAR_WIDTH = 3;
-const BAR_GAP = 2.5;
-const STEP = BAR_WIDTH + BAR_GAP;
-/** A new bar every SAMPLE_MS; the wave scrolls smoothly in between. */
-const SAMPLE_MS = 55;
-const MIN_BAR = 2.5;
+const BARS = Array.from({ length: 14 }, (_, index) => index);
+const IDLE_BAR = 3;
+const MAX_BAR = 24; // the bar row is h-6
 
 /**
- * Scrolling bar waveform drawn on a canvas: the newest bar enters on the
- * right with the current loudness, older bars drift left and fade out.
+ * Bar height for the live loudness: the design's ripple (a sine over the
+ * bar index, drifting with time) scaled by how loud the student is.
  */
-function VoiceWaveform({
+function liveBarHeight(bar: number, timeMs: number, level: number) {
+  const ripple = Math.abs(Math.sin(bar * 1.35 + timeMs * 0.0055));
+  return Math.min(MAX_BAR, IDLE_BAR + level * (4 + ripple * 17));
+}
+
+function formatSeconds(seconds: number) {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+export function ComposerVoice({
+  recording,
+  seconds,
   getLevel,
   className,
-}: {
+  ...props
+}: Omit<ComponentProps<"div">, "children"> & {
+  recording: boolean;
+  seconds: number;
+  /** Live loudness 0..1, read every frame while recording. */
   getLevel: () => number;
-  className?: string;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const barsRef = useRef<HTMLDivElement>(null);
   const getLevelRef = useRef(getLevel);
   getLevelRef.current = getLevel;
 
+  // Heights are written straight to the DOM every frame, so the bars move
+  // with the voice without re-rendering React 60 times a second.
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const context = canvas?.getContext("2d");
-    if (!(canvas && context)) {
+    const bars = Array.from(barsRef.current?.children ?? []) as HTMLElement[];
+    if (!recording) {
+      for (const bar of bars) {
+        bar.style.height = `${IDLE_BAR}px`;
+      }
       return;
     }
-
-    let width = 0;
-    let height = 0;
-    const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 3);
-      width = canvas.clientWidth;
-      height = canvas.clientHeight;
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      context.setTransform(dpr, 0, 0, dpr, 0, 0);
-    };
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
-
-    let colors = { brand: "", foreground: "" };
-    const readColors = () => {
-      const foreground = getComputedStyle(canvas).color;
-      const brand =
-        getComputedStyle(document.documentElement)
-          .getPropertyValue("--brand")
-          .trim() || foreground;
-      colors = { brand, foreground };
-    };
-    readColors();
-
-    // Bar heights 0..1, newest last. Starts as a quiet baseline.
-    const bars: number[] = new Array(160).fill(0);
-    let peak = 0;
-    let displayed = 0;
-    let lastSample = performance.now();
+    let level = 0;
     let frame = 0;
-    let frameCount = 0;
-
-    const draw = (now: number) => {
-      frameCount += 1;
-      if (frameCount % 30 === 0) {
-        readColors(); // follows theme changes
+    const tick = (now: number) => {
+      const target = Math.min(1, Math.max(0, getLevelRef.current()));
+      // Fast attack, quick release: syllables pop, silence settles.
+      level += (target - level) * (target > level ? 0.6 : 0.25);
+      // A faint ripple while quiet shows it is listening.
+      const shown = Math.max(level, 0.08);
+      for (const [index, bar] of bars.entries()) {
+        bar.style.height = `${liveBarHeight(index, now, shown).toFixed(1)}px`;
       }
-
-      // Fast attack, slower release, so syllables "pop".
-      const level = Math.min(1, Math.max(0, getLevelRef.current()));
-      displayed += (level - displayed) * (level > displayed ? 0.55 : 0.18);
-      peak = Math.max(peak, displayed);
-
-      while (now - lastSample >= SAMPLE_MS) {
-        bars.push(peak);
-        bars.shift();
-        peak = displayed;
-        lastSample += SAMPLE_MS;
-      }
-      if (now - lastSample > SAMPLE_MS * 4) {
-        lastSample = now; // tab was hidden
-      }
-
-      context.clearRect(0, 0, width, height);
-      const gradient = context.createLinearGradient(0, 0, width, 0);
-      gradient.addColorStop(0, colors.foreground);
-      gradient.addColorStop(0.7, colors.foreground);
-      gradient.addColorStop(1, colors.brand);
-      context.fillStyle = gradient;
-
-      const scroll = ((now - lastSample) / SAMPLE_MS) * STEP;
-      const middle = height / 2;
-      const maxBar = height - 4;
-      const visible = Math.ceil(width / STEP) + 2;
-      for (let index = 0; index < visible; index += 1) {
-        const value = bars.at(-1 - index) ?? 0;
-        // Newest bar sits at the right edge; the live level grows into it.
-        const x = width - BAR_WIDTH - index * STEP - (STEP - scroll);
-        if (x < -BAR_WIDTH) {
-          break;
-        }
-        const live = index === 0 ? Math.max(value, displayed) : value;
-        const barHeight = MIN_BAR + live ** 0.85 * (maxBar - MIN_BAR);
-        // Fade out towards the left edge.
-        context.globalAlpha = Math.min(1, Math.max(0, x / (width * 0.35)));
-        context.beginPath();
-        if (typeof context.roundRect === "function") {
-          context.roundRect(
-            x,
-            middle - barHeight / 2,
-            BAR_WIDTH,
-            barHeight,
-            BAR_WIDTH / 2
-          );
-        } else {
-          context.rect(x, middle - barHeight / 2, BAR_WIDTH, barHeight);
-        }
-        context.fill();
-      }
-      context.globalAlpha = 1;
-      frame = requestAnimationFrame(draw);
+      frame = requestAnimationFrame(tick);
     };
-    frame = requestAnimationFrame(draw);
-
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  }, []);
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [recording]);
 
   return (
-    <div aria-hidden="true" className={cn("h-11 w-full", className)}>
-      <canvas
-        className="block h-full w-full text-foreground/85"
-        ref={canvasRef}
-      />
+    <div
+      className={cn("flex min-h-11 items-center gap-3 ps-3", className)}
+      data-recording={recording || undefined}
+      data-slot="composer-voice"
+      {...props}
+    >
+      {recording ? (
+        <span
+          aria-hidden
+          className="size-1.5 animate-pulse rounded-full bg-blue-500 dark:bg-blue-400"
+        />
+      ) : null}
+      <div
+        aria-hidden
+        className="flex h-6 items-center gap-[3px]"
+        ref={barsRef}
+      >
+        {BARS.map((bar) => (
+          <span
+            className={cn(
+              "w-0.5 rounded-full transition-[height,background-color] duration-150 motion-reduce:transition-none",
+              recording ? "bg-foreground/50" : "bg-foreground/25"
+            )}
+            key={bar}
+            // Live updates: a short transition keeps them smooth but on time.
+            style={{
+              height: IDLE_BAR,
+              transitionDuration: recording ? "70ms" : undefined,
+            }}
+          />
+        ))}
+      </div>
+      {recording ? (
+        <span className={cn(mono, "text-foreground/40 tabular-nums")}>
+          {formatSeconds(seconds)}
+        </span>
+      ) : (
+        <span className="shimmer relative text-[13px] text-foreground/55 motion-reduce:animate-none">
+          Transcribing
+        </span>
+      )}
     </div>
+  );
+}
+
+export function ComposerVoiceButton({
+  active,
+  className,
+  ...props
+}: Omit<ComponentProps<"button">, "children"> & { active: boolean }) {
+  return (
+    <button
+      aria-label={active ? "Stop recording" : "Start voice input"}
+      className={cn(
+        active
+          ? cn(
+              inkButton,
+              "flex size-8 items-center justify-center rounded-full"
+            )
+          : cn(ghostButton, "size-8"),
+        className
+      )}
+      data-slot="composer-voice-button"
+      type="button"
+      {...props}
+    >
+      {active ? (
+        <SquareIcon className="size-3 fill-current" />
+      ) : (
+        <MicIcon className="size-4" />
+      )}
+    </button>
   );
 }
 
 /* ------------------------------------------------------------------ panel */
 
+function useElapsedSeconds(startedAt: number, running: boolean) {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    if (!running) {
+      return;
+    }
+    const tick = () =>
+      setSeconds(
+        Math.max(0, Math.floor((performance.now() - startedAt) / 1000))
+      );
+    tick();
+    const timer = setInterval(tick, 250);
+    return () => clearInterval(timer);
+  }, [running, startedAt]);
+  return seconds;
+}
+
 /**
- * Covers the textarea while listening: live transcript (words still being
- * recognised are lighter) above the waveform.
+ * Replaces the textarea while a voice message is recorded: the live
+ * transcript above the dictation waveform.
  */
 export function VoicePanel({
   getLevel,
-  state,
+  recording,
+  startedAt,
   transcript,
 }: {
   getLevel: () => number;
-  state: VoiceState;
+  /** False while settling (transcribing / sending). */
+  recording: boolean;
+  startedAt: number;
   transcript: { final: string; interim: string };
 }) {
+  const seconds = useElapsedSeconds(startedAt, recording);
   const empty = !(transcript.final || transcript.interim);
 
   return (
     <motion.div
       animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
-      className="absolute inset-0 z-10 flex flex-col justify-between overflow-hidden rounded-t-2xl px-4 pt-3.5 pb-1"
+      className="absolute inset-0 z-10 flex flex-col justify-between overflow-hidden rounded-t-2xl pt-3.5"
       data-testid="voice-panel"
       exit={{ filter: "blur(6px)", opacity: 0, y: 4 }}
       initial={{ filter: "blur(6px)", opacity: 0, y: 4 }}
-      transition={{ duration: 0.35, ease: EASE }}
+      transition={{ duration: 0.3, ease: EASE }}
     >
       <div
         aria-live="polite"
-        className="flex max-h-[3.4rem] min-h-6 flex-col justify-end overflow-hidden text-[14px] leading-relaxed"
+        className="flex max-h-[3.4rem] flex-col justify-end overflow-hidden px-4 text-[14px] leading-relaxed"
       >
         {empty ? (
-          <span className="dzd-voice-shimmer select-none">
-            {state === "finishing" ? "Finishing…" : "Listening… start speaking"}
+          <span className="select-none text-foreground/35">
+            {recording ? "Listening…" : ""}
           </span>
         ) : (
           <p className="break-words">
-            <span className="text-foreground">{transcript.final}</span>
+            <span className="text-foreground/80">{transcript.final}</span>
             {transcript.interim ? (
-              <span className="text-muted-foreground/70">
+              <span className="text-foreground/55">
                 {transcript.final ? " " : ""}
                 {transcript.interim}
               </span>
@@ -208,38 +241,17 @@ export function VoicePanel({
           </p>
         )}
       </div>
-      <VoiceWaveform
-        className={cn(
-          "transition-opacity duration-300",
-          state === "finishing" && "opacity-40"
-        )}
+      <ComposerVoice
+        className="ps-4"
         getLevel={getLevel}
+        recording={recording}
+        seconds={seconds}
       />
     </motion.div>
   );
 }
 
 /* --------------------------------------------------------------- controls */
-
-function useElapsed(startedAt: number, running: boolean) {
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    if (!running) {
-      return;
-    }
-    const tick = () =>
-      setElapsed(Math.max(0, (performance.now() - startedAt) / 1000));
-    tick();
-    const timer = setInterval(tick, 250);
-    return () => clearInterval(timer);
-  }, [running, startedAt]);
-  return elapsed;
-}
-
-function formatElapsed(seconds: number) {
-  const whole = Math.floor(seconds);
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
-}
 
 function VoiceLanguageMenu({
   lang,
@@ -259,7 +271,7 @@ function VoiceLanguageMenu({
       <DropdownMenuTrigger asChild>
         <button
           aria-label={`Voice language: ${current.label}`}
-          className="flex h-7 items-center gap-1 rounded-lg px-2 text-[12px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="flex h-8 items-center gap-1 rounded-full px-2.5 text-[12px] text-foreground/55 transition-colors hover:bg-foreground/[0.06] hover:text-foreground/90"
           type="button"
         >
           {current.short}
@@ -286,27 +298,27 @@ function VoiceLanguageMenu({
   );
 }
 
-/** Footer while listening: recording dot, timer, language, cancel and send. */
+/** Footer while recording: language, cancel, and stop (which sends). */
 export function VoiceControls({
   lang,
   onCancel,
   onLangChange,
   onSend,
-  startedAt,
   state,
 }: {
   lang: VoiceLanguage;
   onCancel: () => void;
   onLangChange: (lang: VoiceLanguage) => void;
   onSend: () => void;
-  startedAt: number;
-  state: VoiceState;
+  state: VoiceState | "sending";
 }) {
-  const listening = state === "listening";
-  const elapsed = useElapsed(startedAt, listening);
+  const recording = state === "listening";
 
-  // Esc cancels, Enter sends (unless a menu is open and handling keys).
+  // Esc cancels, Enter stops and sends (unless a menu is handling keys).
   useEffect(() => {
+    if (!recording) {
+      return;
+    }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || document.querySelector("[role=menu]")) {
         return;
@@ -321,80 +333,30 @@ export function VoiceControls({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onCancel, onSend]);
+  }, [onCancel, onSend, recording]);
 
   return (
     <div className="flex w-full items-center justify-between gap-2">
-      <div className="flex items-center gap-2">
-        <span className="relative ml-1.5 flex size-2.5">
-          {listening ? (
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-500/60" />
-          ) : null}
-          <span
-            className={cn(
-              "relative inline-flex size-2.5 rounded-full transition-colors",
-              listening ? "bg-red-500" : "bg-muted-foreground/50"
-            )}
-          />
-        </span>
-        <span className="min-w-9 font-medium text-[12.5px] text-foreground/85 tabular-nums">
-          {formatElapsed(elapsed)}
-        </span>
-        <VoiceLanguageMenu lang={lang} onLangChange={onLangChange} />
-      </div>
-
-      <div className="flex items-center gap-1.5">
-        <motion.button
+      <VoiceLanguageMenu lang={lang} onLangChange={onLangChange} />
+      <div className="flex items-center gap-1">
+        <button
           aria-label="Cancel voice message"
-          className="flex h-7 w-7 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className={cn(ghostButton, "size-8 disabled:opacity-40")}
           data-testid="voice-cancel"
+          disabled={!recording}
           onClick={onCancel}
           type="button"
-          whileTap={{ scale: 0.9 }}
         >
           <XIcon className="size-4" />
-        </motion.button>
-        <motion.button
-          aria-label="Send voice message"
-          className="relative flex h-7 w-7 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-colors hover:bg-primary/85 disabled:cursor-default"
+        </button>
+        <ComposerVoiceButton
+          active={recording}
+          aria-label={recording ? "Stop and send voice message" : "Sending"}
+          className="disabled:opacity-60"
           data-testid="voice-send"
-          disabled={!listening}
+          disabled={!recording}
           onClick={onSend}
-          type="button"
-          whileTap={{ scale: 0.9 }}
-        >
-          {listening ? (
-            <span className="dzd-voice-ring pointer-events-none absolute inset-0 rounded-xl" />
-          ) : null}
-          <AnimatePresence initial={false} mode="wait">
-            {listening ? (
-              <motion.span
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.6 }}
-                initial={{ opacity: 0, scale: 0.6 }}
-                key="check"
-                transition={{ duration: 0.18 }}
-              >
-                <CheckIcon className="size-4" strokeWidth={2.5} />
-              </motion.span>
-            ) : (
-              <motion.span
-                animate={{ opacity: 1, rotate: 360 }}
-                className="block size-3.5 rounded-full border-2 border-current border-t-transparent"
-                initial={{ opacity: 0 }}
-                key="spinner"
-                transition={{
-                  opacity: { duration: 0.18 },
-                  rotate: {
-                    duration: 0.8,
-                    ease: "linear",
-                    repeat: Number.POSITIVE_INFINITY,
-                  },
-                }}
-              />
-            )}
-          </AnimatePresence>
-        </motion.button>
+        />
       </div>
     </div>
   );
@@ -410,17 +372,13 @@ export function MicButton({
   onClick: () => void;
 }) {
   return (
-    <motion.button
-      aria-label="Speak your message"
-      className="flex h-7 w-7 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+    <ComposerVoiceButton
+      active={false}
+      className="disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
       data-testid="voice-button"
       disabled={disabled}
       onClick={onClick}
-      title="Speak your message"
-      type="button"
-      whileTap={disabled ? undefined : { scale: 0.88 }}
-    >
-      <MicIcon className="size-4" />
-    </motion.button>
+      title="Record a voice message"
+    />
   );
 }

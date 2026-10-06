@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { VoiceData } from "@/lib/types";
-import { buildVoiceData, MAX_VOICE_MS } from "@/lib/voice-message";
+import {
+  alignVoiceWords,
+  MAX_VOICE_MS,
+  type VoiceEnvelope,
+} from "@/lib/voice-message";
 
 /**
  * Voice messages: the browser's built-in speech recognition (free; Chrome,
@@ -102,8 +106,8 @@ function readLevel(analyser: AnalyserNode, buffer: Float32Array<ArrayBuffer>) {
 }
 
 const FINISH_TIMEOUT_MS = 1800;
-/** Recognition reports a word a little after it was said. */
-const RECOGNITION_LAG_MS = 350;
+/** How often the loudness is sampled for word timing. */
+const ENVELOPE_MS = 20;
 const RECORDER_TYPES = [
   "audio/webm;codecs=opus",
   "audio/mp4",
@@ -157,10 +161,8 @@ function createRecorder(stream: MediaStream): RecorderState | null {
       state.chunks.push(event.data);
     }
   };
-  recorder.onstart = () => {
-    state.startedAt = performance.now();
-  };
   recorder.start(1000);
+  state.startedAt = performance.now();
   return state;
 }
 const isAndroid = () =>
@@ -207,6 +209,9 @@ export function useVoiceRecorder({
   // When each transcript word was first heard (performance.now()).
   const heardAtRef = useRef<number[]>([]);
   const maxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Loudness while recording (performance.now() times), for word timing.
+  const envelopeRef = useRef<{ t: number; v: number }[]>([]);
+  const envelopeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stopRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
@@ -220,6 +225,10 @@ export function useVoiceRecorder({
 
   /** Releases the microphone; an unfinished recording is thrown away. */
   const stopAudio = useCallback(() => {
+    if (envelopeTimerRef.current) {
+      clearInterval(envelopeTimerRef.current);
+      envelopeTimerRef.current = null;
+    }
     const recorder = recorderRef.current;
     recorderRef.current = null;
     if (recorder && recorder.recorder.state !== "inactive") {
@@ -299,7 +308,16 @@ export function useVoiceRecorder({
       } catch {
         recorderRef.current = null;
       }
-      if (!recorderRef.current) {
+      if (recorderRef.current) {
+        const buffer = new Float32Array(analyser.fftSize);
+        envelopeRef.current = [];
+        envelopeTimerRef.current = setInterval(() => {
+          envelopeRef.current.push({
+            t: performance.now(),
+            v: readLevel(analyser, buffer),
+          });
+        }, ENVELOPE_MS);
+      } else {
         recordingLostRef.current = true;
       }
     } catch {
@@ -324,6 +342,7 @@ export function useVoiceRecorder({
     }
     stopAudio();
     heardAtRef.current = [];
+    envelopeRef.current = [];
     recognitionRef.current = null;
     committedRef.current = "";
     sessionRef.current = { final: "", interim: "" };
@@ -347,6 +366,7 @@ export function useVoiceRecorder({
       .replace(/\s+/g, " ")
       .trim();
     const heardAt = heardAtRef.current;
+    const envelope = envelopeRef.current;
     const recording = await finishRecording();
     const recordingLost = recordingLostRef.current || !recording;
     reset();
@@ -358,11 +378,13 @@ export function useVoiceRecorder({
         recording && text
           ? {
               blob: recording.blob,
-              data: buildVoiceData(
+              data: alignVoiceWords(
                 text,
-                heardAt.map((time) =>
-                  Math.max(0, time - RECOGNITION_LAG_MS - recording.startedAt)
-                ),
+                heardAt.map((time) => time - recording.startedAt),
+                envelope.map((sample): VoiceEnvelope[number] => ({
+                  t: sample.t - recording.startedAt,
+                  v: sample.v,
+                })),
                 recording.duration
               ),
               mimeType: recording.mimeType,
@@ -522,6 +544,15 @@ export function useVoiceRecorder({
     if (maxTimerRef.current) {
       clearTimeout(maxTimerRef.current);
       maxTimerRef.current = null;
+    }
+    // The recording ends now; recognition may need a moment to finish.
+    if (envelopeTimerRef.current) {
+      clearInterval(envelopeTimerRef.current);
+      envelopeTimerRef.current = null;
+    }
+    const recorder = recorderRef.current;
+    if (recorder && recorder.recorder.state !== "inactive") {
+      recorder.recorder.stop();
     }
     const recognition = recognitionRef.current;
     if (!recognition) {

@@ -227,6 +227,9 @@ importers:
       tailwindcss-animate:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@4.3.2)
+      tw-shimmer:
+        specifier: 0.4.13
+        version: 0.4.13(tailwindcss@4.3.2)
       unpdf:
         specifier: 1.8.1
         version: 1.8.1
@@ -4723,6 +4726,11 @@ packages:
     resolution: {integrity: sha512-eUdUIaCr963q2h5u3+QwvYp0+eqPvn+egeqZUm0hwERCqqx1E3kK5ehbGCvqSE5MQAULr67ww0cA3jKc3YkM1w==}
     engines: {node: '>=18.0.0'}
     hasBin: true
+
+  tw-shimmer@0.4.13:
+    resolution: {integrity: sha512-hEkTdCdOeDAr/Yx37U/W6BQjiXjLkGxugVIHsbCdSGDGHWzWMSyNNAqH+wVt0TinAtVsRsnwPYrIDbt2HSUAQg==}
+    peerDependencies:
+      tailwindcss: '>=4.0.0-0'
 
   type-check@0.4.0:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
@@ -9537,6 +9545,10 @@ snapshots:
       esbuild: 0.28.1
     optionalDependencies:
       fsevents: 2.3.3
+
+  tw-shimmer@0.4.13(tailwindcss@4.3.2):
+    dependencies:
+      tailwindcss: 4.3.2
 
   type-check@0.4.0:
     dependencies:

@@ -518,13 +518,17 @@ function PureMultimodalInput({
   );
   // Uploads the recording, then sends it with its transcript. If the
   // upload fails, the transcript is sent as a text message instead.
+  // While the recording uploads, the voice panel stays in its settling
+  // ("Transcribing") state showing what was said.
+  const [sendingTranscript, setSendingTranscript] = useState<string | null>(
+    null
+  );
   const sendVoiceMessage = useCallback(
     async (
       transcript: string,
       recording: NonNullable<VoiceResult["voice"]>
     ) => {
-      const queueName = "Voice message";
-      setUploadQueue((queue) => [...queue, queueName]);
+      setSendingTranscript(transcript);
       try {
         const type = normalizeAudioType(recording.mimeType) ?? "audio/webm";
         const formData = new FormData();
@@ -570,7 +574,7 @@ function PureMultimodalInput({
         );
         submitForm({ keepInput: true, text: transcript });
       } finally {
-        setUploadQueue((queue) => queue.filter((name) => name !== queueName));
+        setSendingTranscript(null);
       }
     },
     [submitForm]
@@ -612,7 +616,7 @@ function PureMultimodalInput({
     onError: handleVoiceError,
     onFinish: handleVoiceFinish,
   });
-  const voiceActive = voice.state !== "idle";
+  const voiceActive = voice.state !== "idle" || sendingTranscript !== null;
   const startVoice = voice.start;
   const handleMicClick = useCallback(() => {
     setSlashOpen(false);
@@ -785,8 +789,13 @@ function PureMultimodalInput({
               <VoicePanel
                 getLevel={voice.getLevel}
                 key="voice-panel"
-                state={voice.state}
-                transcript={voice.transcript}
+                recording={voice.state === "listening"}
+                startedAt={voice.startedAt}
+                transcript={
+                  sendingTranscript === null
+                    ? voice.transcript
+                    : { final: sendingTranscript, interim: "" }
+                }
               />
             ) : null}
           </AnimatePresence>
@@ -828,8 +837,7 @@ function PureMultimodalInput({
                   onCancel={voice.cancel}
                   onLangChange={setVoiceLanguage}
                   onSend={voice.stop}
-                  startedAt={voice.startedAt}
-                  state={voice.state}
+                  state={sendingTranscript === null ? voice.state : "sending"}
                 />
               </motion.div>
             ) : (

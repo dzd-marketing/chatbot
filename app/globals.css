@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-shimmer";
 @import "katex/dist/katex.min.css";
 
 @source "../node_modules/streamdown/dist/index.js";
@@ -989,58 +990,6 @@ textarea:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .dzd-welcome-glow-layer {
-    animation: none;
-  }
-}
-
-/* Voice input: "Listening…" shimmer and the pulse around the send button. */
-.dzd-voice-shimmer {
-  color: transparent;
-  background:
-    linear-gradient(
-      90deg,
-      var(--muted-foreground) 0%,
-      var(--muted-foreground) 40%,
-      var(--foreground) 50%,
-      var(--muted-foreground) 60%,
-      var(--muted-foreground) 100%
-    )
-    0 0 / 250% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  animation: dzd-voice-shimmer 2.2s linear infinite;
-}
-
-@keyframes dzd-voice-shimmer {
-  from {
-    background-position: 100% 0;
-  }
-  to {
-    background-position: -150% 0;
-  }
-}
-
-.dzd-voice-ring {
-  box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 45%, transparent);
-  animation: dzd-voice-ring 1.8s cubic-bezier(0.32, 0.72, 0, 1) infinite;
-}
-
-@keyframes dzd-voice-ring {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 45%, transparent);
-  }
-  70%,
-  100% {
-    box-shadow: 0 0 0 9px color-mix(in oklab, var(--primary) 0%, transparent);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .dzd-voice-shimmer {
-    color: var(--muted-foreground);
-    animation: none;
-  }
-  .dzd-voice-ring {
     animation: none;
   }
 }
