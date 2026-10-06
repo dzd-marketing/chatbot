@@ -62,6 +62,7 @@ import {
   getTextFromMessage,
 } from "@/lib/utils";
 import { voiceMessagesForModel } from "@/lib/voice-message";
+import { heardOfLastReply } from "@/lib/voice-speech";
 import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
@@ -333,7 +334,14 @@ export async function POST(request: Request) {
 
         const enabledTools = supportsTools ? activeToolNames(toolSettings) : [];
         // Spoken replies in a voice conversation.
-        const spoken = voice ? `\n\n${voicePrompt(voice.language)}` : "";
+        const spoken = voice
+          ? `\n\n${voicePrompt(voice.language, {
+              interruptedAfter: heardOfLastReply(
+                uiMessages,
+                voice.interruptedAfterWords
+              ),
+            })}`
+          : "";
         const instructions = `${systemPrompt({
           builtInWebSearch: false,
           calculator: toolSettings.calculator,

@@ -80,7 +80,16 @@ export const postRequestBodySchema = z.object({
     .optional(),
   // Sent from a voice conversation: replies are spoken aloud, in this
   // language (components/chat/voice-call.tsx).
-  voice: z.object({ language: z.enum(["en-IN", "si-LK", "ta-LK"]) }).optional(),
+  voice: z
+    .object({
+      // The student cut the last spoken reply short after hearing this
+      // many of its words (0 = none), so the model doesn't assume they
+      // heard it all. A count, not text: the words come from the saved
+      // reply, so nothing from the browser goes into the instructions.
+      interruptedAfterWords: z.number().int().min(0).max(2000).optional(),
+      language: z.enum(["en-IN", "si-LK", "ta-LK"]),
+    })
+    .optional(),
   // Older clients only send this flag; web search stays on when omitted.
   webSearch: z.boolean().optional().default(true),
 });

@@ -77,6 +77,8 @@ const HOLD_ON: Record<CallLanguage, readonly string[]> = {
     "ஒரு நிமிஷம், நான் தேடி பார்க்கிறேன்.",
   ],
 };
+const countWords = (text: string) => text.split(/\s+/).filter(Boolean).length;
+
 const SEARCH_TOOLS = new Set(["tool-webSearch", "tool-webFetch"]);
 
 /** The reply went to search the web before saying anything. */
@@ -183,6 +185,8 @@ export function VoiceCall({
   const queuedRef = useRef<{ id: string; text: string; at: number } | null>(
     null
   );
+  /** Words the student heard of a reply they cut short (for the model). */
+  const interruptedRef = useRef<number | null>(null);
 
   const send = useCallback(
     (id: string, text: string) => {
@@ -192,9 +196,20 @@ export function VoiceCall({
         "",
         `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${chatId}`
       );
+      const interruptedAfter = interruptedRef.current;
+      interruptedRef.current = null;
       sendMessage(
         { id, parts: [{ text, type: "text" }], role: "user" },
-        { body: { voice: { language: lang } } }
+        {
+          body: {
+            voice: {
+              language: lang,
+              ...(interruptedAfter === null
+                ? {}
+                : { interruptedAfterWords: interruptedAfter }),
+            },
+          },
+        }
       );
     },
     [chatId, lang, sendMessage]
@@ -364,6 +379,7 @@ export function VoiceCall({
       openRef.current = true;
       mutedRef.current = false;
       pendingRef.current = null;
+      interruptedRef.current = null;
       setOpen(true);
       setOrbReady(false);
       setMuted(false);
@@ -411,11 +427,16 @@ export function VoiceCall({
     cancelSpeech();
     // Keep what was said, so the transcript shows where it stopped.
     let turn: VoiceTurn | null = null;
+    interruptedRef.current = 0;
     if (reply) {
       const said =
         progress && progress.turnId === reply.id
           ? reply.text.slice(0, progress.wordEnd).trim()
           : "";
+      // The "hang on" line isn't part of the saved reply.
+      const holdOn = HOLD_ON[lang].find((line) => said.startsWith(line));
+      const heard = holdOn ? said.slice(holdOn.length) : said;
+      interruptedRef.current = countWords(heard);
       turn = said
         ? { id: reply.id, role: "assistant", text: `${said}…` }
         : null;
@@ -425,7 +446,7 @@ export function VoiceCall({
     if (status === "submitted" || status === "streaming") {
       stop();
     }
-  }, [cancelSpeech, finishReply, listen, progress, reply, status, stop]);
+  }, [cancelSpeech, finishReply, lang, listen, progress, reply, status, stop]);
 
   const toggleMute = useCallback(() => {
     if (mutedRef.current) {

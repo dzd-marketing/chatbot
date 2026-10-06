@@ -101,6 +101,11 @@ export function toSpeakable(markdown: string) {
       .replace(/\^2\b/g, " squared")
       .replace(/\^3\b/g, " cubed")
       .replace(/[²³]/g, (match) => SUPERSCRIPTS[match] ?? match)
+      // Stage directions ("[laughs]", "*smiles*") would be read out.
+      .replace(
+        /[[(*]\s*(?:laughs?|laughing|chuckles?|giggles?|sighs?|smiles?|grins?|gasps?|whispers?|pauses?|excited(?:ly)?|clears throat|winks?|nods?)\s*[\])*]/gi,
+        " "
+      )
       // Links and images: keep the label, drop the address.
       .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
       .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
@@ -120,6 +125,34 @@ export function toSpeakable(markdown: string) {
       .replace(/\s+/g, " ")
       .trim()
   );
+}
+
+type MessageLike = {
+  role: string;
+  parts: readonly ({ type: string } & { text?: unknown })[];
+};
+
+/**
+ * The first `words` words of the last reply as it was spoken: what the
+ * student heard before interrupting (undefined if they didn't).
+ */
+export function heardOfLastReply(
+  messages: readonly MessageLike[],
+  words: number | undefined
+) {
+  if (words === undefined) {
+    return;
+  }
+  const reply = messages.findLast((message) => message.role === "assistant");
+  const text = toSpeakable(
+    (reply?.parts ?? [])
+      .map((part) =>
+        part.type === "text" && typeof part.text === "string" ? part.text : ""
+      )
+      .filter(Boolean)
+      .join("\n\n")
+  );
+  return text.split(/\s+/).filter(Boolean).slice(0, words).join(" ");
 }
 
 /* --------------------------------------------------------------- sentences */

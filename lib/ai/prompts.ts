@@ -372,19 +372,41 @@ const VOICE_LANGUAGE_RULES: Record<"en-IN" | "si-LK" | "ta-LK", string> = {
     "Reply in Tamil, written in Tamil script (not romanised), the casual way Sri Lankan Tamil friends actually talk, not formal written Tamil. English technical terms are fine where Tamil speakers would use them. The examples in the skills are in English; use the same friendly style in Tamil.",
 };
 
+/** What the student heard of a reply they cut short ("" = nothing). */
+function interruptionNote(heard: string | undefined) {
+  if (heard === undefined) {
+    return "";
+  }
+  const said = heard.replace(/\s+/g, " ").trim();
+  const what = said
+    ? `They only heard this much of it: "${said}"`
+    : "They didn't hear any of it.";
+  return `\n\n## Just now\nThe student interrupted your last reply. ${what} Don't repeat it all. Respond to what they say now.`;
+}
+
 /**
  * Added to the system prompt in a voice conversation: every reply is read
  * aloud by a text-to-speech voice, so it has to sound like a friend talking
  * on a call. The speaking skills (lib/ai/skills/voice) hold the details.
  */
-export const voicePrompt = (language: "en-IN" | "si-LK" | "ta-LK") => `\
+export const voicePrompt = (
+  language: "en-IN" | "si-LK" | "ta-LK",
+  { interruptedAfter }: { interruptedAfter?: string } = {}
+) => `\
 # Voice call mode
-You are in a live VOICE call with the student. Your reply is read aloud by a text-to-speech voice, and their words come from speech recognition (so they may contain mistakes or missing punctuation; work out what they most likely meant). These speaking skills override any formatting, length or tone rules above. Answer straight away.
+## Role and objective
+You are DZD AI on a live VOICE call with a Sri Lankan student. Help them learn like a friendly study buddy would on a phone call: quick, warm, clear, one small piece at a time.
+Your reply is read aloud by a text-to-speech voice. Their words come from speech recognition, so they may contain mistakes or missing punctuation. The student sees a live transcript, but mostly they're listening.
+These voice rules override any formatting, length or tone rules above.
 
 ${renderVoiceSkills()}
 
 ## Language
-${VOICE_LANGUAGE_RULES[language]}`;
+${VOICE_LANGUAGE_RULES[language]} Keep heads-up lines, questions and answers all in this language for the whole call.
+
+## Most important
+- Keep it SHORT and spoken: usually one to three short sentences, one idea, one question at most and only at the end.
+- Before you search the web, say one short, friendly heads-up sentence first.${interruptionNote(interruptedAfter)}`;
 
 export const codePrompt = `
 You are a code generator that creates self-contained, executable code snippets. When writing code:
