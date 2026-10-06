@@ -22,12 +22,14 @@ import {
 import type { ChatMessage } from "@/lib/types";
 import { cn, generateUUID } from "@/lib/utils";
 import { releaseAudioSession } from "@/lib/voice-audio";
+import { type VoiceDepth, voiceDepth } from "@/lib/voice-depth";
 import {
   BACKCHANNELS,
   type BackchannelKind,
   type CallLanguage,
   pickFor,
   spokenPart,
+  spokenSection,
   toSpeakable,
 } from "@/lib/voice-speech";
 import { VoiceLanguageMenu } from "./voice-input";
@@ -77,6 +79,29 @@ const HOLD_ON: Record<CallLanguage, readonly string[]> = {
     "ஒரு நிமிஷம், நான் தேடி பார்க்கிறேன்.",
   ],
 };
+
+/**
+ * Said straight away when a question needs a thought-through answer (the
+ * model thinks first), so the student knows it's coming.
+ */
+const THINKING: Record<CallLanguage, readonly string[]> = {
+  "en-IN": [
+    "Ooh, good one. Let me think about that properly.",
+    "Okay, give me a second to think this through.",
+    "Nice, let me put together a proper answer for you.",
+    "Right, let me think about the best way to do this.",
+    "Good question. Give me a moment to get this right.",
+  ],
+  "si-LK": [
+    "හොඳ ප්‍රශ්නයක්. පොඩ්ඩක් හිතලා කියන්නම්.",
+    "හරි, තත්පරයක් දෙන්න, හොඳට හිතලා උත්තරයක් දෙන්නම්.",
+  ],
+  "ta-LK": [
+    "நல்ல கேள்வி. கொஞ்சம் யோசிச்சு சொல்றேன்.",
+    "சரி, ஒரு நொடி, நல்லா யோசிச்சு பதில் சொல்றேன்.",
+  ],
+};
+
 const countWords = (text: string) => text.split(/\s+/).filter(Boolean).length;
 
 const SEARCH_TOOLS = new Set(["tool-webSearch", "tool-webFetch"]);
@@ -94,13 +119,16 @@ const searchedFirst = (message: ChatMessage) => {
   return false;
 };
 
-const replyText = (message: ChatMessage) =>
-  toSpeakable(
+/** The spoken text of a reply, and whether a written part follows it. */
+const replyText = (message: ChatMessage) => {
+  const { spoken, written } = spokenSection(
     message.parts
       .map((part) => (part.type === "text" ? part.text : ""))
       .filter(Boolean)
       .join("\n\n")
   );
+  return { text: toSpeakable(spoken), written };
+};
 
 /** Voice conversations need speech recognition and a speech voice. */
 export function useCallSupported() {
@@ -165,7 +193,12 @@ export function VoiceCall({
   const openRef = useRef(false);
   const mutedRef = useRef(false);
   /** The student's turn waiting for (or getting) its spoken reply. */
-  const pendingRef = useRef<{ userMessageId: string } | null>(null);
+  const pendingRef = useRef<{
+    depth: VoiceDepth;
+    userMessageId: string;
+  } | null>(null);
+  /** The last question's depth ("yes, go on" after a plan stays deep). */
+  const lastDepthRef = useRef<VoiceDepth>("quick");
   const lastBackchannelRef = useRef("");
   const connectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -190,7 +223,9 @@ export function VoiceCall({
 
   const send = useCallback(
     (id: string, text: string) => {
-      pendingRef.current = { userMessageId: id };
+      const depth = voiceDepth(text, lastDepthRef.current);
+      lastDepthRef.current = depth;
+      pendingRef.current = { depth, userMessageId: id };
       window.history.pushState(
         {},
         "",
@@ -203,6 +238,7 @@ export function VoiceCall({
         {
           body: {
             voice: {
+              depth,
               language: lang,
               ...(interruptedAfter === null
                 ? {}
@@ -346,17 +382,26 @@ export function VoiceCall({
       }
       return;
     }
-    let full = replyText(answer);
+    const { depth } = pending;
+    const { text: answerText, written } = replyText(answer);
+    let full = answerText;
     if (settled && !full) {
       full = status === "error" ? FAILED[lang] : IN_CHAT[lang];
     }
-    if (searchedFirst(answer)) {
-      // Stays at the start, so the spoken text only grows.
+    // Lines at the start stay there, so the spoken text only grows.
+    if (depth === "deep") {
+      // Said while the model thinks (it covers a search, too).
+      full = `${pickFor(THINKING[lang], answer.id)} ${full}`.trim();
+    } else if (searchedFirst(answer)) {
       full = `${pickFor(HOLD_ON[lang], answer.id)} ${full}`.trim();
     }
-    // Long replies are cut short in speech; the chat keeps all of it, and
-    // the call moves on without waiting for the rest to be written.
-    const { capped, text } = spokenPart(full, settled, lang);
+    // Long replies are cut short in speech, and a written part (a plan, a
+    // table) isn't spoken; the chat keeps all of it, and the call moves on
+    // without waiting for the rest to be written.
+    const { capped, text } = spokenPart(full, settled, lang, {
+      depth,
+      written,
+    });
     setReply({ id: answer.id, text });
     feed(answer.id, text, settled || capped, () =>
       finishReply({ id: answer.id, role: "assistant", text })
@@ -380,6 +425,7 @@ export function VoiceCall({
       mutedRef.current = false;
       pendingRef.current = null;
       interruptedRef.current = null;
+      lastDepthRef.current = "quick";
       setOpen(true);
       setOrbReady(false);
       setMuted(false);
@@ -433,9 +479,11 @@ export function VoiceCall({
         progress && progress.turnId === reply.id
           ? reply.text.slice(0, progress.wordEnd).trim()
           : "";
-      // The "hang on" line isn't part of the saved reply.
-      const holdOn = HOLD_ON[lang].find((line) => said.startsWith(line));
-      const heard = holdOn ? said.slice(holdOn.length) : said;
+      // The "hang on" / "let me think" line isn't part of the saved reply.
+      const prefix = [...THINKING[lang], ...HOLD_ON[lang]].find((line) =>
+        said.startsWith(line)
+      );
+      const heard = prefix ? said.slice(prefix.length) : said;
       interruptedRef.current = countWords(heard);
       turn = said
         ? { id: reply.id, role: "assistant", text: `${said}…` }

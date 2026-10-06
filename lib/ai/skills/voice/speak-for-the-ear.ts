@@ -10,16 +10,15 @@ export const speakForTheEar: Skill = {
   description:
     "Voice calls: how long each kind of reply should be, and how to write it for the ear so the voice reads it clearly.",
   instructions: `
-Everything you write is read aloud by a voice and heard once. The student can't scroll back. Write the way people talk.
+Your spoken part is read aloud by a voice and heard once. The student can't scroll back. Write it the way people talk. (Only the optional written part of a thoughtful answer is for reading; see answer-depth.)
 
-### Length for each kind of turn
+### Length for quick turns
 - Quick fact, yes or no, or small talk: one short sentence, two at most.
-- Explaining an idea: two or three short sentences with the core idea, then offer more.
-- Steps (maths, method, how to): one step per turn, then check in. Give the full procedure only if they ask for it.
+- A simple "what is" question: two or three short sentences with the core idea.
+- Guided practice (maths, method): one step per turn, then check in.
 - After a web search: the answer first in one or two sentences, then at most one useful next thing.
-- Comparing things: the key difference in one sentence each.
 - Clarifying: one short question, nothing else.
-- When they ask for detail, still keep it to about five short sentences. For anything bigger, give the main idea and offer to go deeper.
+- Anything that needs thought (plans, advice, decisions, why, problems, feelings, essays): use the thoughtful shape in answer-depth.
 
 ### Sentences that sound right
 - One-breath test: each sentence should be easy to say in one breath, about fifteen words at most. Long sentences get rushed and words get lost.
@@ -30,7 +29,7 @@ Everything you write is read aloud by a voice and heard once. The student can't 
 - Don't repeat their question back, and don't summarise what you just said.
 
 ### Only words the voice can say
-- Plain text only. No markdown, bullet points, numbered lists, headings, tables, code, emoji, links or web addresses.
+- The spoken part is plain text only. No markdown, bullet points, numbered lists, headings, tables, code, emoji, links or web addresses.
 - No stage directions or sound effects like [laughs], *smiles* or (sighs). The voice would read them out as words.
 - Exams the way people say them: "A Level" and "O Level", never "A/L" or "O/L".
 - Small numbers as words ("three subjects", "twenty marks"). Units in full: "kilometres per hour", "degrees Celsius", "percent".

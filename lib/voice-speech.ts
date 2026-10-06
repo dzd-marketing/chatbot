@@ -5,6 +5,7 @@
  * can start before the whole reply has arrived.
  */
 
+import type { VoiceDepth } from "./voice-depth";
 import { plainCharacters } from "./voice-pronounce";
 
 export type CallLanguage = "en-IN" | "si-LK" | "ta-LK";
@@ -249,11 +250,37 @@ function pushSentence(sentences: string[], raw: string) {
  * How much of a reply is spoken before the rest is left to the chat. Voice
  * replies are written short (see the speaking skills), so this only cuts
  * replies that ran long; short sentences don't count against it much.
+ * Questions that need thought ("deep", lib/voice-depth.ts) get a fuller
+ * spoken answer.
  */
-const SPOKEN_WORD_LIMIT = 50;
-const SPOKEN_SENTENCE_LIMIT = 5;
+const SPOKEN_LIMITS = {
+  deep: { sentences: 11, words: 130 },
+  quick: { sentences: 5, words: 50 },
+} as const;
 /** A closing question ("Want me to go on?") may go a little over. */
 const QUESTION_GRACE_WORDS = 15;
+
+/**
+ * A thoughtful voice reply may end with a written part for the chat (a
+ * timetable, a full list, a worked solution), starting with a heading,
+ * list or table. Only the part before it is spoken. Returns the reply's
+ * spoken section and whether a written part follows. A reply that starts
+ * with formatting is spoken whole (as plain text), so nothing is lost.
+ */
+export function spokenSection(markdown: string) {
+  const written = WRITTEN_START.exec(markdown);
+  if (!written || written.index === 0) {
+    return { spoken: markdown, written: false };
+  }
+  const spoken = markdown.slice(0, written.index);
+  return /[\p{L}\p{N}]/u.test(spoken)
+    ? { spoken, written: true }
+    : { spoken: markdown, written: false };
+}
+
+/** The first line of a written part: a heading, list item or table row. */
+const WRITTEN_START =
+  /^[ \t]{0,3}(?:#{1,6}[ \t]|[-*+•][ \t]|\d{1,2}[.)][ \t]|\|)/m;
 
 const countWords = (text: string) => text.split(/\s+/).filter(Boolean).length;
 
@@ -291,18 +318,38 @@ export function pickFor<T>(options: readonly T[], seed: string): T {
 }
 
 /**
- * What is spoken of a reply: whole sentences up to about 40 words and three
- * sentences (always at least one), then a pointer to the chat if there is
- * more. The result
- * only ever grows as the reply streams in, so speaking can start early.
+ * "I've put the rest in the chat" goes before a closing question, so the
+ * question is still the last thing the student hears.
+ */
+function withChatPointer(spoken: string, lang: CallLanguage) {
+  const pointer = pickFor(MORE_IN_CHAT[lang], spoken);
+  const sentences = splitSentences(spoken, true);
+  const last = sentences.at(-1);
+  if (sentences.length > 1 && last?.endsWith("?")) {
+    return `${sentences.slice(0, -1).join(" ")} ${pointer} ${last}`;
+  }
+  return `${spoken} ${pointer}`;
+}
+
+/**
+ * What is spoken of a reply: whole sentences up to the word and sentence
+ * limits for its depth (always at least one), then a pointer to the chat if
+ * there is more. `written` means the reply has a written part after this
+ * text, so this text is complete and the chat has more. The result only
+ * ever grows as the reply streams in, so speaking can start early.
  * `capped` means the spoken part is final even if the reply isn't.
  */
 export function spokenPart(
   text: string,
   complete: boolean,
-  lang: CallLanguage
+  lang: CallLanguage,
+  {
+    depth = "quick",
+    written = false,
+  }: { depth?: VoiceDepth; written?: boolean } = {}
 ) {
-  const sentences = splitSentences(text, complete);
+  const limits = SPOKEN_LIMITS[depth];
+  const sentences = splitSentences(text, complete || written);
   let words = 0;
   let end = 0;
   let searchFrom = 0;
@@ -313,22 +360,21 @@ export function spokenPart(
     const closingQuestion =
       sentence.endsWith("?") &&
       sentenceWords <= QUESTION_GRACE_WORDS &&
-      words + sentenceWords <= SPOKEN_WORD_LIMIT + QUESTION_GRACE_WORDS;
+      words + sentenceWords <= limits.words + QUESTION_GRACE_WORDS;
     if (
       index > 0 &&
       !closingQuestion &&
-      (words + sentenceWords > SPOKEN_WORD_LIMIT ||
-        index >= SPOKEN_SENTENCE_LIMIT)
+      (words + sentenceWords > limits.words || index >= limits.sentences)
     ) {
       const spoken = text.slice(0, end).trim();
-      return {
-        capped: true,
-        text: `${spoken} ${pickFor(MORE_IN_CHAT[lang], spoken)}`,
-      };
+      return { capped: true, text: withChatPointer(spoken, lang) };
     }
     words += sentenceWords;
     end = (at === -1 ? searchFrom : at) + sentence.length;
     searchFrom = end;
+  }
+  if (written) {
+    return { capped: true, text: withChatPointer(text.trim(), lang) };
   }
   return { capped: false, text };
 }

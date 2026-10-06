@@ -82,6 +82,9 @@ export const postRequestBodySchema = z.object({
   // language (components/chat/voice-call.tsx).
   voice: z
     .object({
+      // "deep": the question needs thought (planning, advice, why...):
+      // the model thinks first and gives a fuller answer (lib/voice-depth).
+      depth: z.enum(["quick", "deep"]).optional(),
       // The student cut the last spoken reply short after hearing this
       // many of its words (0 = none), so the model doesn't assume they
       // heard it all. A count, not text: the words come from the saved

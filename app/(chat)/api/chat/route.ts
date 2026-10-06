@@ -87,19 +87,27 @@ function isModelStreamActivity(chunk: { type: string }) {
   );
 }
 
-const SPOKEN_REMINDER =
-  "\n\n(Voice call: reply in one to three short spoken sentences, plain words only. No lists, headings, symbols or formulas.)";
+/** The reply shape for this turn, next to the newest message. */
+const SPOKEN_REMINDER = {
+  deep: "(Voice call, thoughtful answer: think it through first. Then the spoken part in plain sentences: the main answer and the two or three most important points, each with a short reason or example, about eighty to one hundred and twenty words, ending with one question if it helps. If a plan, timetable, longer list or worked solution would help, add it after the spoken part as a written part for the chat, starting with a short ### heading. Only the spoken part is read aloud.)",
+  quick:
+    "(Voice call, quick answer: one to three short spoken sentences, plain words only. No lists, headings, symbols or formulas.)",
+} as const;
 
 /** Adds the voice-call reminder to the newest student message. */
-function withSpokenReminder(messages: ModelMessage[]): ModelMessage[] {
+function withSpokenReminder(
+  messages: ModelMessage[],
+  depth: keyof typeof SPOKEN_REMINDER
+): ModelMessage[] {
   const last = messages.at(-1);
   if (last?.role !== "user") {
     return messages;
   }
+  const reminder = SPOKEN_REMINDER[depth];
   const content: UserContent =
     typeof last.content === "string"
-      ? `${last.content}${SPOKEN_REMINDER}`
-      : [...last.content, { text: SPOKEN_REMINDER.trim(), type: "text" }];
+      ? `${last.content}\n\n${reminder}`
+      : [...last.content, { text: reminder, type: "text" }];
   return [...messages.slice(0, -1), { ...last, content }];
 }
 
@@ -251,10 +259,13 @@ export async function POST(request: Request) {
       ...(voice ? { documents: false, study: false, webFetch: false } : {}),
     });
     // Fast (thinking off) or Thinking.
-    // Voice conversations always answer fast (someone is waiting).
-    const reasoningLevel = voice
-      ? "off"
-      : resolveReasoningLevel(modelConfig, reasoning);
+    // Voice conversations answer fast (someone is waiting), unless the
+    // question needs thought (planning, advice, why...); the call says a
+    // "let me think" line meanwhile.
+    let reasoningLevel = resolveReasoningLevel(modelConfig, reasoning);
+    if (voice) {
+      reasoningLevel = voice.depth === "deep" ? "medium" : "off";
+    }
 
     // Uploaded PDF / Word / text files become text the model can read.
     // Voice messages: the model reads the transcript, not the audio.
@@ -268,7 +279,7 @@ export async function POST(request: Request) {
     // In a call, remind the model right next to the newest message that the
     // reply is spoken: earlier written answers in the chat pull the other way.
     const modelMessages = voice
-      ? withSpokenReminder(convertedMessages)
+      ? withSpokenReminder(convertedMessages, voice.depth ?? "quick")
       : convertedMessages;
 
     const stream = createUIMessageStream({

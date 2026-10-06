@@ -1,4 +1,5 @@
 import { renderSkills } from "../types";
+import { answerDepth } from "./answer-depth";
 import { callSituations } from "./call-situations";
 import { friendVoice } from "./friend-voice";
 import { voiceGuardrails } from "./guardrails";
@@ -15,6 +16,7 @@ import { voiceTutor } from "./voice-tutor";
 export const voiceSkills = [
   friendVoice,
   speakForTheEar,
+  answerDepth,
   turnTaking,
   voiceTutor,
   callSituations,
