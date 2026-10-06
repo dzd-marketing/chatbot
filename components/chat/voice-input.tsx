@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { CheckIcon, MicIcon, SquareIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
+  type ReactNode,
   useCallback,
   useEffect,
   useRef,
@@ -353,14 +354,12 @@ export function MicButton({
   lang: VoiceLanguage;
   onPick: (lang: VoiceLanguage) => void;
 }) {
-  const handleCloseAutoFocus = useCallback((event: Event) => {
-    // Recording replaces the mic button; don't pull focus back to it.
-    event.preventDefault();
-  }, []);
-
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild disabled={disabled}>
+    <VoiceLanguageMenu
+      lang={lang}
+      onPick={onPick}
+      testIdPrefix="voice-language"
+      trigger={
         <ComposerVoiceButton
           active={false}
           aria-label="Record a voice message"
@@ -369,11 +368,47 @@ export function MicButton({
           disabled={disabled}
           title="Record a voice message"
         />
+      }
+      triggerDisabled={disabled}
+    />
+  );
+}
+
+/**
+ * Asks which language the student will speak, then calls `onPick` from the
+ * click (so the browser lets the microphone start). Used by voice messages
+ * and voice conversations.
+ */
+export function VoiceLanguageMenu({
+  icon = MicIcon,
+  lang,
+  onPick,
+  testIdPrefix,
+  trigger,
+  triggerDisabled,
+}: {
+  icon?: typeof MicIcon;
+  /** The language used last time. */
+  lang: VoiceLanguage;
+  onPick: (lang: VoiceLanguage) => void;
+  testIdPrefix: string;
+  trigger: ReactNode;
+  triggerDisabled?: boolean;
+}) {
+  const handleCloseAutoFocus = useCallback((event: Event) => {
+    // What opens next replaces the button; don't pull focus back to it.
+    event.preventDefault();
+  }, []);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild disabled={triggerDisabled}>
+        {trigger}
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
         className="min-w-52"
-        data-testid="voice-language-menu"
+        data-testid={`${testIdPrefix}-menu`}
         onCloseAutoFocus={handleCloseAutoFocus}
         side="top"
       >
@@ -382,10 +417,12 @@ export function MicButton({
         </DropdownMenuLabel>
         {VOICE_LANGUAGES.map((option) => (
           <LanguageItem
+            icon={icon}
             key={option.id}
             last={option.id === lang}
             onPick={onPick}
             option={option}
+            testIdPrefix={testIdPrefix}
           />
         ))}
       </DropdownMenuContent>
@@ -394,13 +431,17 @@ export function MicButton({
 }
 
 function LanguageItem({
+  icon: Icon,
   last,
   onPick,
   option,
+  testIdPrefix,
 }: {
+  icon: typeof MicIcon;
   last: boolean;
   onPick: (lang: VoiceLanguage) => void;
   option: (typeof VOICE_LANGUAGES)[number];
+  testIdPrefix: string;
 }) {
   const handleSelect = useCallback(() => onPick(option.id), [onPick, option]);
   return (
@@ -410,10 +451,10 @@ function LanguageItem({
         last && "bg-foreground/[0.05]"
       )}
       data-last={last || undefined}
-      data-testid={`voice-language-${option.id}`}
+      data-testid={`${testIdPrefix}-${option.id}`}
       onSelect={handleSelect}
     >
-      <MicIcon className="size-3.5 text-muted-foreground" />
+      <Icon className="size-3.5 text-muted-foreground" />
       <span className="flex-1">{option.label}</span>
       {option.label === option.name ? null : (
         <span className="text-[11px] text-muted-foreground">{option.name}</span>

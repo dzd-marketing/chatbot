@@ -78,6 +78,9 @@ export const postRequestBodySchema = z.object({
       webSearch: z.boolean().optional(),
     })
     .optional(),
+  // Sent from a voice conversation: replies are spoken aloud, in this
+  // language (components/chat/voice-call.tsx).
+  voice: z.object({ language: z.enum(["en-IN", "si-LK", "ta-LK"]) }).optional(),
   // Older clients only send this flag; web search stays on when omitted.
   webSearch: z.boolean().optional().default(true),
 });

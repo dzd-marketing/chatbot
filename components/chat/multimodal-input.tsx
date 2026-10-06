@@ -54,6 +54,7 @@ import {
 } from "./slash-commands";
 import { FeatureChip, StudyFeatureCards } from "./study-features";
 import type { VisibilityType } from "./visibility-selector";
+import { useCallSupported, VoiceCall } from "./voice-call";
 import { MicButton, VoiceControls, VoicePanel } from "./voice-input";
 
 /** Documents are read as text on the server (api/files/upload). */
@@ -595,6 +596,16 @@ function PureMultimodalInput({
   const canSend =
     input.trim().length > 0 ||
     (attachments.length > 0 && (!feature || feature.attachmentOnly === true));
+  // Nothing typed: the speech button (voice conversation) replaces send.
+  const callSupported = useCallSupported();
+  const showCallButton =
+    callSupported &&
+    !canSend &&
+    attachments.length === 0 &&
+    !feature &&
+    !editingMessage &&
+    uploadQueue.length === 0 &&
+    (status === "ready" || status === "error");
 
   const handlePromptSubmit = useCallback(() => {
     if (voiceActive) {
@@ -857,7 +868,7 @@ function PureMultimodalInput({
                   ) : null}
                   {status === "submitted" || status === "streaming" ? (
                     <StopButton setMessages={setMessages} stop={stop} />
-                  ) : (
+                  ) : showCallButton ? null : (
                     <PromptInputSubmit
                       className={cn(
                         "h-7 w-7 rounded-xl transition-all duration-200 max-md:h-9 max-md:w-9 max-md:rounded-full",
@@ -873,6 +884,8 @@ function PureMultimodalInput({
                       <ArrowUpIcon className="size-4" />
                     </PromptInputSubmit>
                   )}
+                  {/* Stays mounted during a call (the status changes). */}
+                  <VoiceCall showTrigger={showCallButton} />
                 </div>
               </motion.div>
             )}

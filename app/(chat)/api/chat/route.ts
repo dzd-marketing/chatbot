@@ -20,7 +20,7 @@ import {
   dzdLearnModel,
   resolveReasoningLevel,
 } from "@/lib/ai/models";
-import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
+import { type RequestHints, systemPrompt, voicePrompt } from "@/lib/ai/prompts";
 import { getLanguageModel } from "@/lib/ai/providers";
 import { describeError, routerErrorMessage } from "@/lib/ai/router";
 import { createPrepareStep, MAX_STEPS } from "@/lib/ai/step-limits";
@@ -110,6 +110,7 @@ export async function POST(request: Request) {
       reasoning,
       selectedVisibilityType,
       tools: requestedTools,
+      voice,
       webSearch: webSearchRequested,
     } = requestBody;
 
@@ -219,9 +220,11 @@ export async function POST(request: Request) {
     const modelConfig = dzdLearnModel;
     const supportsTools = dzdLearnCapabilities.tools;
     // The student's Tools menu; older clients only send `webSearch`.
+    // A voice conversation can't show quizzes, flashcards or documents.
     const toolSettings = resolveToolSettings({
       webSearch: webSearchRequested,
       ...requestedTools,
+      ...(voice ? { documents: false, study: false } : {}),
     });
     // Fast (thinking off) or Thinking.
     const reasoningLevel = resolveReasoningLevel(modelConfig, reasoning);
@@ -325,7 +328,9 @@ export async function POST(request: Request) {
         };
 
         const enabledTools = supportsTools ? activeToolNames(toolSettings) : [];
-        const instructions = systemPrompt({
+        // Spoken replies in a voice conversation.
+        const spoken = voice ? `\n\n${voicePrompt(voice.language)}` : "";
+        const instructions = `${systemPrompt({
           builtInWebSearch: false,
           calculator: toolSettings.calculator,
           documents: toolSettings.documents,
@@ -334,10 +339,10 @@ export async function POST(request: Request) {
           study: toolSettings.study,
           supportsTools,
           webSearch: toolSettings.webSearch,
-        });
+        })}${spoken}`;
         // If the reply falls back to DZD's own model: it searches the web on
         // its own server and has none of the website's tools.
-        const dzdInstructions = systemPrompt({
+        const dzdInstructions = `${systemPrompt({
           builtInWebSearch: true,
           calculator: false,
           documents: false,
@@ -346,7 +351,7 @@ export async function POST(request: Request) {
           study: false,
           supportsTools: false,
           webSearch: toolSettings.webSearch,
-        });
+        })}${spoken}`;
 
         const result = streamText({
           // Models without tool support get no tools at all (llama.cpp, for

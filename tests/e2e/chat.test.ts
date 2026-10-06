@@ -15,7 +15,27 @@ test.describe("Chat Page", () => {
 
   test("submit button is visible", async ({ page }) => {
     await page.goto("/");
+    // Empty input: the voice conversation button takes send's place
+    // (where the browser can listen and speak).
+    await page.getByTestId("multimodal-input").fill("Hello");
     await expect(page.getByTestId("send-button")).toBeVisible();
+  });
+
+  test("speech button replaces send while nothing is typed", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const supported = await page.evaluate(
+      () =>
+        ("SpeechRecognition" in window ||
+          "webkitSpeechRecognition" in window) &&
+        "speechSynthesis" in window
+    );
+    test.skip(!supported, "No speech recognition in this browser");
+    await expect(page.getByTestId("voice-call-button")).toBeVisible();
+    await expect(page.getByTestId("send-button")).toHaveCount(0);
+    await page.getByTestId("voice-call-button").click();
+    await expect(page.getByTestId("call-language-menu")).toBeVisible();
   });
 
   test("suggested actions are visible on empty chat", async ({ page }) => {

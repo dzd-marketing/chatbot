@@ -50,7 +50,7 @@ type RecognitionEvent = {
   results: ArrayLike<RecognitionResult>;
 };
 type RecognitionErrorEvent = { error: string };
-type Recognition = {
+export type Recognition = {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
@@ -65,7 +65,7 @@ type Recognition = {
 };
 type RecognitionConstructor = new () => Recognition;
 
-function getRecognitionConstructor(): RecognitionConstructor | null {
+export function getRecognitionConstructor(): RecognitionConstructor | null {
   if (typeof window === "undefined") {
     return null;
   }
@@ -82,7 +82,7 @@ const LANGUAGE_NAMES: Record<VoiceLanguage, string> = {
   "ta-LK": "Tamil",
 };
 
-function errorMessage(code: string, lang: VoiceLanguage) {
+export function errorMessage(code: string, lang: VoiceLanguage) {
   switch (code) {
     case "not-allowed":
     case "service-not-allowed":
@@ -170,7 +170,7 @@ function createRecorder(stream: MediaStream): RecorderState | null {
   state.startedAt = performance.now();
   return state;
 }
-const isAndroid = () =>
+export const isAndroid = () =>
   typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
 
 export function useVoiceRecorder({

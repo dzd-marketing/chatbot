@@ -47,6 +47,9 @@ importers:
       '@radix-ui/react-use-controllable-state':
         specifier: ^1.2.3
         version: 1.2.3(@types/react@18.3.31)(react@19.2.7)
+      '@rive-app/react-webgl2':
+        specifier: ^4.36.0
+        version: 4.36.0(react@19.2.7)
       '@streamdown/cjk':
         specifier: ^1.0.3
         version: 1.0.3(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2)(react@19.2.7)(unified@11.0.5)
@@ -2233,6 +2236,14 @@ packages:
     engines: {node: '>= 20.0.0'}
     peerDependencies:
       '@redis/client': ^6.1.0
+
+  '@rive-app/react-webgl2@4.36.0':
+    resolution: {integrity: sha512-EWWFztHCKZoYrdPSkVwtnO3YQ4N9Z0rdAP5C7FLg7PgTT4Kwxdj5G+7vGnRKer08P0+E6gvZJNzitnewRXookA==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0
+
+  '@rive-app/webgl2@2.44.0':
+    resolution: {integrity: sha512-BIlutEsgyPRwMLEat2dDVBannAqIH75TeCCyrYA4KjUMMM+2bFJ2qfwqJACUAsUE+EYdcQaONycfTFRQ4JGLqg==}
 
   '@shikijs/core@3.21.0':
     resolution: {integrity: sha512-AXSQu/2n1UIQekY8euBJlvFYZIw0PHY63jUzGbrOma4wPxzznJXTXkri+QcHeBNaFxiiOljKxxJkVSoB3PjbyA==}
@@ -6625,6 +6636,13 @@ snapshots:
   '@redis/time-series@6.1.0(@redis/client@6.1.0(@opentelemetry/api@1.9.1))':
     dependencies:
       '@redis/client': 6.1.0(@opentelemetry/api@1.9.1)
+
+  '@rive-app/react-webgl2@4.36.0(react@19.2.7)':
+    dependencies:
+      '@rive-app/webgl2': 2.44.0
+      react: 19.2.7
+
+  '@rive-app/webgl2@2.44.0': {}
 
   '@shikijs/core@3.21.0':
     dependencies:
