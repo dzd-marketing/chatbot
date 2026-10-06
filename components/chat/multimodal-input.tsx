@@ -573,7 +573,6 @@ function PureMultimodalInput({
     toast.error(message);
   }, []);
   const voice = useVoiceRecorder({
-    lang: voiceLanguage,
     onError: handleVoiceError,
     onFinish: handleVoiceFinish,
   });
@@ -582,11 +581,16 @@ function PureMultimodalInput({
   const handlePlusAttach = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
-  const handleMicClick = useCallback(() => {
-    setSlashOpen(false);
-    textareaRef.current?.blur();
-    startVoice();
-  }, [startVoice]);
+  // The mic asks for the language first; recording starts once it's picked.
+  const handleVoiceLanguagePick = useCallback(
+    (language: VoiceLanguage) => {
+      setSlashOpen(false);
+      textareaRef.current?.blur();
+      setVoiceLanguage(language);
+      startVoice(language);
+    },
+    [setVoiceLanguage, startVoice]
+  );
 
   const canSend =
     input.trim().length > 0 ||
@@ -753,6 +757,7 @@ function PureMultimodalInput({
               <VoicePanel
                 getLevel={voice.getLevel}
                 key="voice-panel"
+                lang={voice.lang}
                 recording={voice.state === "listening"}
                 startedAt={voice.startedAt}
                 transcript={
@@ -797,9 +802,8 @@ function PureMultimodalInput({
                 transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
               >
                 <VoiceControls
-                  lang={voiceLanguage}
+                  lang={voice.lang}
                   onCancel={voice.cancel}
-                  onLangChange={setVoiceLanguage}
                   onSend={voice.stop}
                   state={sendingTranscript === null ? voice.state : "sending"}
                 />
@@ -847,7 +851,8 @@ function PureMultimodalInput({
                         !(status === "ready" || status === "error") ||
                         uploadQueue.length > 0
                       }
-                      onClick={handleMicClick}
+                      lang={voiceLanguage}
+                      onPick={handleVoiceLanguagePick}
                     />
                   ) : null}
                   {status === "submitted" || status === "streaming" ? (

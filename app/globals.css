@@ -771,8 +771,9 @@ textarea:focus-visible {
 
 /*
  * Welcome screen orb (components/chat/welcome-loader.tsx). Port of the
- * pasted styled-components loader: gooey morphing triangles (blurred,
- * high-contrast SVG mask) over an amber gradient, slowly hue-shifting.
+ * pasted styled-components loader: gooey morphing triangles over an amber
+ * gradient, slowly hue-shifting. The wrapper adds the shadows, the glass
+ * rim (::before) and the hue shift; the SVG draws the moving shapes.
  */
 .dzd-loader {
   --color-one: #ffbf48;
@@ -810,95 +811,13 @@ textarea:focus-visible {
     inset 0 -10px 10px 0 var(--color-four);
 }
 
-.dzd-loader .dzd-loader-box {
+/* The goo itself is drawn by the SVG (filter + SMIL; see welcome-loader.tsx).
+ * It sits in normal flow under the absolutely positioned glass ::before. */
+.dzd-loader .dzd-loader-art {
+  display: block;
   width: 100px;
   height: 100px;
-  background: linear-gradient(
-    180deg,
-    var(--color-one) 30%,
-    var(--color-two) 70%
-  );
-  -webkit-mask: url(#dzd-loader-clipping);
-  mask: url(#dzd-loader-clipping);
-}
-
-.dzd-loader svg {
-  position: absolute;
-}
-
-.dzd-loader svg #dzd-loader-clipping {
-  filter: contrast(15);
-  animation: dzd-loader-roundness calc(var(--time-animation) / 2) linear
-    infinite;
-}
-
-.dzd-loader svg #dzd-loader-clipping polygon {
-  filter: blur(7px);
-}
-
-.dzd-loader svg #dzd-loader-clipping polygon:nth-child(1) {
-  transform: rotate(90deg);
-  transform-origin: 75% 25%;
-}
-
-.dzd-loader svg #dzd-loader-clipping polygon:nth-child(2) {
-  transform-origin: 50% 50%;
-  animation: dzd-loader-rotation var(--time-animation) linear infinite reverse;
-}
-
-.dzd-loader svg #dzd-loader-clipping polygon:nth-child(3) {
-  transform-origin: 50% 60%;
-  animation: dzd-loader-rotation var(--time-animation) linear infinite;
-  animation-delay: calc(var(--time-animation) / -3);
-}
-
-.dzd-loader svg #dzd-loader-clipping polygon:nth-child(4) {
-  transform-origin: 40% 40%;
-  animation: dzd-loader-rotation var(--time-animation) linear infinite reverse;
-}
-
-.dzd-loader svg #dzd-loader-clipping polygon:nth-child(5) {
-  transform-origin: 40% 40%;
-  animation: dzd-loader-rotation var(--time-animation) linear infinite reverse;
-  animation-delay: calc(var(--time-animation) / -2);
-}
-
-.dzd-loader svg #dzd-loader-clipping polygon:nth-child(6) {
-  transform-origin: 60% 40%;
-  animation: dzd-loader-rotation var(--time-animation) linear infinite;
-}
-
-.dzd-loader svg #dzd-loader-clipping polygon:nth-child(7) {
-  transform-origin: 60% 40%;
-  animation: dzd-loader-rotation var(--time-animation) linear infinite;
-  animation-delay: calc(var(--time-animation) / -1.5);
-}
-
-@keyframes dzd-loader-rotation {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes dzd-loader-roundness {
-  0% {
-    filter: contrast(15);
-  }
-  20% {
-    filter: contrast(3);
-  }
-  40% {
-    filter: contrast(3);
-  }
-  60% {
-    filter: contrast(15);
-  }
-  100% {
-    filter: contrast(15);
-  }
+  border-radius: 50%;
 }
 
 @keyframes dzd-loader-colorize {
@@ -923,9 +842,7 @@ textarea:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dzd-loader,
-  .dzd-loader svg #dzd-loader-clipping,
-  .dzd-loader svg #dzd-loader-clipping polygon {
+  .dzd-loader {
     animation: none;
   }
 }

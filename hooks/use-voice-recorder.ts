@@ -7,16 +7,19 @@ import {
   MAX_VOICE_MS,
   type VoiceEnvelope,
 } from "@/lib/voice-message";
+import { TranscribeError, transcribeRecording } from "@/lib/voice-transcribe";
 
 /**
- * Voice messages: the browser's built-in speech recognition (free; Chrome,
- * Edge and Safari) writes the transcript while a separate microphone stream
- * is recorded for playback and feeds an analyser so the waveform follows the
- * student's voice. Each word's start time is noted as it is recognised, so
- * playback can highlight the word being spoken.
+ * Voice messages. The student picks the language first, then the
+ * microphone is recorded (for playback, and feeding an analyser so the
+ * waveform follows their voice). When they stop, the recording is turned
+ * into text by DZD Learn's own speech-to-text on the server (Whisper, see
+ * lib/voice-transcribe.ts), so it works the same on every phone and browser.
  *
- * Where the browser can't share the microphone (some Android phones), the
- * recording is dropped and the message is sent as text instead.
+ * On computers the browser's built-in recognition also runs, only to show
+ * live captions while speaking (and as a fallback if the server can't be
+ * reached). Phones skip it: on many Android devices it can't share the
+ * microphone with the recording and silently hears nothing.
  */
 
 export type VoiceLanguage = "en-IN" | "si-LK" | "ta-LK";
@@ -24,13 +27,21 @@ export type VoiceLanguage = "en-IN" | "si-LK" | "ta-LK";
 export const VOICE_LANGUAGES: readonly {
   id: VoiceLanguage;
   label: string;
+  /** English name, for screen readers and messages. */
+  name: string;
   short: string;
+  /** Language code for the speech-to-text server (Whisper). */
+  speech: "en" | "si" | "ta";
 }[] = [
-  { id: "en-IN", label: "English", short: "EN" },
-  { id: "si-LK", label: "සිංහල", short: "සිං" },
-  { id: "ta-LK", label: "தமிழ்", short: "தமி" },
+  { id: "en-IN", label: "English", name: "English", short: "EN", speech: "en" },
+  { id: "si-LK", label: "සිංහල", name: "Sinhala", short: "සිං", speech: "si" },
+  { id: "ta-LK", label: "தமிழ்", name: "Tamil", short: "தமி", speech: "ta" },
 ];
 
+export const voiceLanguageInfo = (lang: VoiceLanguage) =>
+  VOICE_LANGUAGES.find((option) => option.id === lang) ?? VOICE_LANGUAGES[0];
+
+/** "finishing": stopped, turning the recording into text. */
 export type VoiceState = "idle" | "listening" | "finishing";
 
 /* Minimal Web Speech API types (not in TypeScript's DOM library). */
@@ -71,11 +82,19 @@ function getRecognitionConstructor(): RecognitionConstructor | null {
   return scope.SpeechRecognition ?? scope.webkitSpeechRecognition ?? null;
 }
 
-const LANGUAGE_NAMES: Record<VoiceLanguage, string> = {
-  "en-IN": "English",
-  "si-LK": "Sinhala",
-  "ta-LK": "Tamil",
-};
+const canRecord = () =>
+  typeof navigator !== "undefined" &&
+  typeof navigator.mediaDevices?.getUserMedia === "function" &&
+  typeof MediaRecorder !== "undefined";
+
+const isAndroid = () =>
+  typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
+
+/** Phones and tablets (iPadOS reports itself as a Mac with touch). */
+const isMobileDevice = () =>
+  typeof navigator !== "undefined" &&
+  (/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent) ||
+    (/macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
 
 function errorMessage(code: string, lang: VoiceLanguage) {
   switch (code) {
@@ -85,11 +104,13 @@ function errorMessage(code: string, lang: VoiceLanguage) {
     case "audio-capture":
       return "No microphone was found. Check that one is connected.";
     case "network":
-      return "Voice typing needs an internet connection.";
+      return "Voice messages need an internet connection.";
     case "language-not-supported":
-      return `${LANGUAGE_NAMES[lang]} voice typing isn't supported in this browser. Try Chrome, or choose another language.`;
+      return `${voiceLanguageInfo(lang).name} voice typing isn't supported in this browser. Try Chrome, or choose another language.`;
+    case "unsupported":
+      return "This browser can't record audio. Try updating it, or use Chrome or Safari.";
     default:
-      return "Voice typing stopped unexpectedly. Please try again.";
+      return "Voice recording stopped unexpectedly. Please try again.";
   }
 }
 
@@ -132,10 +153,7 @@ type RecorderState = {
   stopped: Promise<void>;
 };
 
-function createRecorder(stream: MediaStream): RecorderState | null {
-  if (typeof MediaRecorder === "undefined") {
-    return null;
-  }
+function createRecorder(stream: MediaStream): RecorderState {
   const mimeType =
     RECORDER_TYPES.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
   const recorder = new MediaRecorder(stream, {
@@ -165,15 +183,16 @@ function createRecorder(stream: MediaStream): RecorderState | null {
   state.startedAt = performance.now();
   return state;
 }
-const isAndroid = () =>
-  typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 export function useVoiceRecorder({
-  lang,
   onFinish,
   onError,
 }: {
-  lang: VoiceLanguage;
   /** Called when the student stops (the text may be empty). */
   onFinish: (result: VoiceResult) => void;
   onError: (message: string) => void;
@@ -182,19 +201,31 @@ export function useVoiceRecorder({
   const [state, setState] = useState<VoiceState>("idle");
   const [transcript, setTranscript] = useState({ final: "", interim: "" });
   const [startedAt, setStartedAt] = useState(0);
+  const [lang, setLang] = useState<VoiceLanguage>("en-IN");
 
   const stateRef = useRef<VoiceState>("idle");
-  const recognitionRef = useRef<Recognition | null>(null);
-  // Final text from earlier recognition sessions (it restarts on pauses).
-  const committedRef = useRef("");
-  const sessionRef = useRef({ final: "", interim: "" });
-  const langRef = useRef(lang);
+  // Each recording gets a new id, so late results of a cancelled one are
+  // ignored.
+  const sessionIdRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const langRef = useRef<VoiceLanguage>("en-IN");
   const onFinishRef = useRef(onFinish);
   const onErrorRef = useRef(onError);
   onFinishRef.current = onFinish;
   onErrorRef.current = onError;
 
-  // Microphone level (analyser), or speech activity as a fallback.
+  // Live captions (browser recognition; computers only).
+  const recognitionRef = useRef<Recognition | null>(null);
+  const recognitionEndedRef = useRef<(() => void) | null>(null);
+  // Final text from earlier recognition sessions (it restarts on pauses).
+  const committedRef = useRef("");
+  const sessionRef = useRef({ final: "", interim: "" });
+  const restartTimesRef = useRef<number[]>([]);
+  const heardAtRef = useRef<number[]>([]);
+  /** No recording is possible: the captions are the message. */
+  const captionsOnlyRef = useRef(false);
+
+  // Microphone: level (analyser) and the recording.
   const audioRef = useRef<{
     stream: MediaStream;
     context: AudioContext;
@@ -202,12 +233,8 @@ export function useVoiceRecorder({
     buffer: Float32Array<ArrayBuffer>;
   } | null>(null);
   const lastSpeechRef = useRef(0);
-  const finishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const restartTimesRef = useRef<number[]>([]);
   const recorderRef = useRef<RecorderState | null>(null);
   const recordingLostRef = useRef(false);
-  // When each transcript word was first heard (performance.now()).
-  const heardAtRef = useRef<number[]>([]);
   const maxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Loudness while recording (performance.now() times), for word timing.
   const envelopeRef = useRef<{ t: number; v: number }[]>([]);
@@ -215,7 +242,7 @@ export function useVoiceRecorder({
   const stopRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
-    setSupported(getRecognitionConstructor() !== null);
+    setSupported(canRecord() || getRecognitionConstructor() !== null);
   }, []);
 
   const setVoiceState = useCallback((next: VoiceState) => {
@@ -244,6 +271,61 @@ export function useVoiceRecorder({
     }
   }, []);
 
+  const stopRecognition = useCallback((abort: boolean) => {
+    const recognition = recognitionRef.current;
+    recognitionRef.current = null;
+    if (recognition) {
+      if (abort) {
+        recognition.abort();
+      } else {
+        recognition.stop();
+      }
+    }
+    recognitionEndedRef.current?.();
+    recognitionEndedRef.current = null;
+  }, []);
+
+  const reset = useCallback(() => {
+    if (maxTimerRef.current) {
+      clearTimeout(maxTimerRef.current);
+      maxTimerRef.current = null;
+    }
+    abortRef.current?.abort();
+    abortRef.current = null;
+    stopRecognition(true);
+    stopAudio();
+    heardAtRef.current = [];
+    envelopeRef.current = [];
+    committedRef.current = "";
+    sessionRef.current = { final: "", interim: "" };
+    restartTimesRef.current = [];
+    captionsOnlyRef.current = false;
+    setTranscript({ final: "", interim: "" });
+    setVoiceState("idle");
+  }, [setVoiceState, stopAudio, stopRecognition]);
+
+  const fail = useCallback(
+    (code: string) => {
+      sessionIdRef.current += 1;
+      reset();
+      onErrorRef.current(errorMessage(code, langRef.current));
+    },
+    [reset]
+  );
+
+  const captionText = useCallback(
+    () =>
+      [
+        committedRef.current,
+        sessionRef.current.final,
+        sessionRef.current.interim,
+      ]
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim(),
+    []
+  );
+
   /** Finishes the recording and returns it (null if there is none). */
   const finishRecording = useCallback(async () => {
     const recorder = recorderRef.current;
@@ -255,10 +337,7 @@ export function useVoiceRecorder({
     if (recorder.recorder.state !== "inactive") {
       recorder.recorder.stop();
     }
-    await Promise.race([
-      recorder.stopped,
-      new Promise((resolve) => setTimeout(resolve, FINISH_TIMEOUT_MS)),
-    ]);
+    await Promise.race([recorder.stopped, wait(FINISH_TIMEOUT_MS)]);
     stopAudio();
     if (recorder.chunks.length === 0) {
       return null;
@@ -274,103 +353,68 @@ export function useVoiceRecorder({
     };
   }, [stopAudio]);
 
-  const startAudio = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          autoGainControl: true,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-      });
-      if (stateRef.current !== "listening") {
-        // Stopped or cancelled while the browser was asking for the mic.
-        recordingLostRef.current = true;
-        for (const track of stream.getTracks()) {
-          track.stop();
-        }
-        return;
-      }
-      const context = new AudioContext();
-      await context.resume().catch(() => undefined);
-      const analyser = context.createAnalyser();
-      analyser.fftSize = 1024;
-      analyser.smoothingTimeConstant = 0.5;
-      context.createMediaStreamSource(stream).connect(analyser);
-      audioRef.current = {
-        analyser,
-        buffer: new Float32Array(analyser.fftSize),
-        context,
-        stream,
-      };
-      try {
-        recorderRef.current = createRecorder(stream);
-      } catch {
-        recorderRef.current = null;
-      }
-      if (recorderRef.current) {
-        const buffer = new Float32Array(analyser.fftSize);
-        envelopeRef.current = [];
-        envelopeTimerRef.current = setInterval(() => {
-          envelopeRef.current.push({
-            t: performance.now(),
-            v: readLevel(analyser, buffer),
-          });
-        }, ENVELOPE_MS);
-      } else {
-        recordingLostRef.current = true;
-      }
-    } catch {
-      // No microphone stream: the waveform follows speech activity and the
-      // message is sent as text.
-      recordingLostRef.current = true;
-    }
-  }, []);
-
-  const clearFinishTimer = useCallback(() => {
-    if (finishTimerRef.current) {
-      clearTimeout(finishTimerRef.current);
-      finishTimerRef.current = null;
-    }
-  }, []);
-
-  const reset = useCallback(() => {
-    clearFinishTimer();
-    if (maxTimerRef.current) {
-      clearTimeout(maxTimerRef.current);
-      maxTimerRef.current = null;
-    }
-    stopAudio();
-    heardAtRef.current = [];
-    envelopeRef.current = [];
-    recognitionRef.current = null;
-    committedRef.current = "";
-    sessionRef.current = { final: "", interim: "" };
-    restartTimesRef.current = [];
-    setTranscript({ final: "", interim: "" });
-    setVoiceState("idle");
-  }, [clearFinishTimer, setVoiceState, stopAudio]);
-
-  const deliveringRef = useRef(false);
+  /** Stops everything, transcribes the recording and hands over the text. */
   const deliver = useCallback(async () => {
-    if (deliveringRef.current) {
-      return;
+    const sessionId = sessionIdRef.current;
+    const language = voiceLanguageInfo(langRef.current);
+
+    // Let live captions settle (they're the fallback), then end the
+    // recording.
+    const recognition = recognitionRef.current;
+    const captionsDone = recognition
+      ? new Promise<void>((resolve) => {
+          recognitionEndedRef.current = resolve;
+          recognition.stop();
+        })
+      : Promise.resolve();
+    const [recording] = await Promise.all([
+      finishRecording(),
+      Promise.race([captionsDone, wait(FINISH_TIMEOUT_MS)]),
+    ]);
+    stopRecognition(true);
+    if (sessionId !== sessionIdRef.current) {
+      return; // cancelled meanwhile
     }
-    deliveringRef.current = true;
-    const text = [
-      committedRef.current,
-      sessionRef.current.final,
-      sessionRef.current.interim,
-    ]
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
+    const captions = captionText();
     const heardAt = heardAtRef.current;
     const envelope = envelopeRef.current;
-    const recording = await finishRecording();
+
+    let text = captions;
+    let usedCaptions = true;
+    if (recording) {
+      const controller = new AbortController();
+      abortRef.current = controller;
+      try {
+        text = await transcribeRecording(
+          recording.blob,
+          language.speech,
+          controller.signal
+        );
+        usedCaptions = false;
+        abortRef.current = null;
+      } catch (error) {
+        if (sessionId !== sessionIdRef.current) {
+          return;
+        }
+        console.warn("Voice transcription failed:", error);
+        if (!captions) {
+          reset();
+          onErrorRef.current(
+            error instanceof TranscribeError && error.status > 0
+              ? error.message.includes("try again")
+                ? error.message
+                : `${error.message} Please try again.`
+              : "Couldn't turn your voice into text. Check your connection and try again."
+          );
+          return;
+        }
+      }
+    }
+    if (sessionId !== sessionIdRef.current) {
+      return;
+    }
     const recordingLost = recordingLostRef.current || !recording;
     reset();
-    deliveringRef.current = false;
     onFinishRef.current({
       recordingLost,
       text,
@@ -380,7 +424,10 @@ export function useVoiceRecorder({
               blob: recording.blob,
               data: alignVoiceWords(
                 text,
-                heardAt.map((time) => time - recording.startedAt),
+                // Caption timings only fit the caption words.
+                usedCaptions
+                  ? heardAt.map((time) => time - recording.startedAt)
+                  : [],
                 envelope.map((sample): VoiceEnvelope[number] => ({
                   t: sample.t - recording.startedAt,
                   v: sample.v,
@@ -391,20 +438,9 @@ export function useVoiceRecorder({
             }
           : undefined,
     });
-  }, [finishRecording, reset]);
+  }, [captionText, finishRecording, reset, stopRecognition]);
 
-  const fail = useCallback(
-    (code: string) => {
-      const recognition = recognitionRef.current;
-      recognitionRef.current = null;
-      recognition?.abort();
-      reset();
-      onErrorRef.current(errorMessage(code, langRef.current));
-    },
-    [reset]
-  );
-
-  const startRecognition = useCallback(() => {
+  const startRecognition = useCallback((): boolean => {
     const Constructor = getRecognitionConstructor();
     if (!Constructor) {
       return false;
@@ -437,14 +473,7 @@ export function useVoiceRecorder({
       }
       sessionRef.current = { final: final.trim(), interim: interim.trim() };
       // Note when each new word was first heard (for playback highlighting).
-      const wordCount = [
-        committedRef.current,
-        sessionRef.current.final,
-        sessionRef.current.interim,
-      ]
-        .join(" ")
-        .split(/\s+/)
-        .filter(Boolean).length;
+      const wordCount = captionText().split(/\s+/).filter(Boolean).length;
       const now = performance.now();
       while (heardAtRef.current.length < wordCount) {
         heardAtRef.current.push(now);
@@ -463,27 +492,24 @@ export function useVoiceRecorder({
       if (event.error === "no-speech" || event.error === "aborted") {
         return; // onend restarts or finishes
       }
-      if (event.error === "audio-capture" && audioRef.current) {
-        // The recording took the microphone: give it back and carry on
-        // (the message will be sent as text).
-        recordingLostRef.current = true;
-        stopAudio();
+      if (captionsOnlyRef.current) {
+        fail(event.error);
         return;
       }
-      fail(event.error);
+      // Captions are optional: the recording carries on without them.
+      recognitionRef.current = null;
+      recognition.abort();
     };
     recognition.onend = () => {
       if (recognitionRef.current !== recognition) {
         return;
       }
-      if (stateRef.current === "finishing") {
-        deliver();
-        return;
-      }
       if (stateRef.current !== "listening") {
+        recognitionEndedRef.current?.();
+        recognitionEndedRef.current = null;
         return;
       }
-      // Ended on a pause (or language change): keep listening.
+      // Ended on a pause: keep listening.
       committedRef.current = [committedRef.current, sessionRef.current.final]
         .filter(Boolean)
         .join(" ");
@@ -494,7 +520,11 @@ export function useVoiceRecorder({
         now,
       ];
       if (restartTimesRef.current.length > 6) {
-        fail("restart-loop");
+        if (captionsOnlyRef.current) {
+          fail("restart-loop");
+        } else {
+          recognitionRef.current = null;
+        }
         return;
       }
       startRecognition();
@@ -508,34 +538,149 @@ export function useVoiceRecorder({
       recognitionRef.current = null;
       return false;
     }
-  }, [deliver, fail, stopAudio]);
+  }, [captionText, fail]);
 
-  /** Call directly from a click (Safari needs the user gesture). */
-  const start = useCallback(() => {
-    if (stateRef.current !== "idle") {
-      return;
-    }
-    committedRef.current = "";
-    sessionRef.current = { final: "", interim: "" };
-    restartTimesRef.current = [];
-    heardAtRef.current = [];
-    recordingLostRef.current = false;
-    deliveringRef.current = false;
-    setTranscript({ final: "", interim: "" });
-    setVoiceState("listening");
-    if (!startRecognition()) {
-      reset();
-      onErrorRef.current(errorMessage("start-failed", langRef.current));
-      return;
-    }
-    setStartedAt(performance.now());
-    lastSpeechRef.current = 0;
-    startAudio();
-    // Long recordings are sent automatically at the limit.
-    maxTimerRef.current = setTimeout(() => stopRef.current(), MAX_VOICE_MS);
-  }, [reset, setVoiceState, startAudio, startRecognition]);
+  /** Without a recording, browser recognition is the only way to listen. */
+  const fallBackToCaptions = useCallback(
+    (code: string) => {
+      recordingLostRef.current = true;
+      captionsOnlyRef.current = true;
+      if (!(recognitionRef.current || startRecognition())) {
+        fail(code);
+      }
+    },
+    [fail, startRecognition]
+  );
 
-  /** Stop listening and deliver the transcript. */
+  const startAudio = useCallback(
+    async (sessionId: number) => {
+      if (!canRecord()) {
+        fallBackToCaptions("unsupported");
+        return;
+      }
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            autoGainControl: true,
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        });
+      } catch (error) {
+        if (sessionId !== sessionIdRef.current) {
+          return;
+        }
+        const { name } = error as { name?: string };
+        if (name === "NotAllowedError" || name === "SecurityError") {
+          fail("not-allowed");
+        } else if (
+          name === "NotFoundError" ||
+          name === "OverconstrainedError"
+        ) {
+          fail("audio-capture");
+        } else {
+          fallBackToCaptions("start-failed");
+        }
+        return;
+      }
+      if (
+        sessionId !== sessionIdRef.current ||
+        stateRef.current !== "listening"
+      ) {
+        // Stopped or cancelled while the browser was asking for the mic.
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        return;
+      }
+      try {
+        recorderRef.current = createRecorder(stream);
+      } catch {
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        fallBackToCaptions("unsupported");
+        return;
+      }
+      // The waveform and word timing; the recording works without them.
+      try {
+        const Context =
+          window.AudioContext ??
+          (window as unknown as { webkitAudioContext?: typeof AudioContext })
+            .webkitAudioContext;
+        const context = new Context();
+        await context.resume().catch(() => undefined);
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 1024;
+        analyser.smoothingTimeConstant = 0.5;
+        context.createMediaStreamSource(stream).connect(analyser);
+        audioRef.current = {
+          analyser,
+          buffer: new Float32Array(analyser.fftSize),
+          context,
+          stream,
+        };
+        const buffer = new Float32Array(analyser.fftSize);
+        envelopeRef.current = [];
+        envelopeTimerRef.current = setInterval(() => {
+          envelopeRef.current.push({
+            t: performance.now(),
+            v: readLevel(analyser, buffer),
+          });
+        }, ENVELOPE_MS);
+      } catch {
+        audioRef.current = null;
+      }
+      if (!audioRef.current) {
+        // Still release the microphone when the recording ends.
+        const recorder = recorderRef.current;
+        recorder?.stopped.then(() => {
+          for (const track of stream.getTracks()) {
+            track.stop();
+          }
+        });
+      }
+    },
+    [fail, fallBackToCaptions]
+  );
+
+  /**
+   * Starts recording in the chosen language. Call directly from a click
+   * (Safari needs the user gesture for the microphone and audio).
+   */
+  const start = useCallback(
+    (language: VoiceLanguage) => {
+      if (stateRef.current !== "idle") {
+        return;
+      }
+      sessionIdRef.current += 1;
+      const sessionId = sessionIdRef.current;
+      langRef.current = language;
+      setLang(language);
+      committedRef.current = "";
+      sessionRef.current = { final: "", interim: "" };
+      restartTimesRef.current = [];
+      heardAtRef.current = [];
+      envelopeRef.current = [];
+      recordingLostRef.current = false;
+      captionsOnlyRef.current = false;
+      lastSpeechRef.current = 0;
+      setTranscript({ final: "", interim: "" });
+      setVoiceState("listening");
+      setStartedAt(performance.now());
+      // Live captions on computers only (see the note at the top).
+      if (!isMobileDevice()) {
+        startRecognition();
+      }
+      startAudio(sessionId);
+      // Long recordings are sent automatically at the limit.
+      maxTimerRef.current = setTimeout(() => stopRef.current(), MAX_VOICE_MS);
+    },
+    [setVoiceState, startAudio, startRecognition]
+  );
+
+  /** Stop recording and send it to be transcribed. */
   const stop = useCallback(() => {
     if (stateRef.current !== "listening") {
       return;
@@ -545,7 +690,7 @@ export function useVoiceRecorder({
       clearTimeout(maxTimerRef.current);
       maxTimerRef.current = null;
     }
-    // The recording ends now; recognition may need a moment to finish.
+    // The recording ends now.
     if (envelopeTimerRef.current) {
       clearInterval(envelopeTimerRef.current);
       envelopeTimerRef.current = null;
@@ -554,46 +699,23 @@ export function useVoiceRecorder({
     if (recorder && recorder.recorder.state !== "inactive") {
       recorder.recorder.stop();
     }
-    const recognition = recognitionRef.current;
-    if (!recognition) {
-      deliver();
-      return;
-    }
-    recognition.stop();
-    // Some browsers never fire "end" after stop().
-    finishTimerRef.current = setTimeout(() => {
-      if (stateRef.current === "finishing") {
-        recognitionRef.current = null;
-        recognition.abort();
-        deliver();
-      }
-    }, FINISH_TIMEOUT_MS);
+    deliver();
   }, [deliver, setVoiceState]);
   stopRef.current = stop;
 
-  /** Stop listening and throw the transcript away. */
+  /** Stop and throw the recording away (also while transcribing). */
   const cancel = useCallback(() => {
     if (stateRef.current === "idle") {
       return;
     }
-    const recognition = recognitionRef.current;
-    recognitionRef.current = null;
-    recognition?.abort();
+    sessionIdRef.current += 1;
     reset();
   }, [reset]);
-
-  // Language change while listening: restart with the new language.
-  useEffect(() => {
-    langRef.current = lang;
-    if (stateRef.current === "listening") {
-      recognitionRef.current?.stop();
-    }
-  }, [lang]);
 
   /** Current loudness 0..1 for the waveform (called every frame). */
   const getLevel = useCallback(() => {
     const audio = audioRef.current;
-    if (audio) {
+    if (audio && stateRef.current === "listening") {
       return readLevel(audio.analyser, audio.buffer);
     }
     if (stateRef.current !== "listening") {
@@ -608,18 +730,24 @@ export function useVoiceRecorder({
   // Clean up if the composer unmounts mid-recording.
   useEffect(
     () => () => {
+      sessionIdRef.current += 1;
+      abortRef.current?.abort();
       const recognition = recognitionRef.current;
       recognitionRef.current = null;
       recognition?.abort();
-      clearFinishTimer();
+      if (maxTimerRef.current) {
+        clearTimeout(maxTimerRef.current);
+      }
       stopAudio();
     },
-    [clearFinishTimer, stopAudio]
+    [stopAudio]
   );
 
   return {
     cancel,
     getLevel,
+    /** The language of the current (or last) recording. */
+    lang,
     start,
     startedAt,
     state,

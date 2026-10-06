@@ -49,6 +49,9 @@ const nextConfig: NextConfig = {
   },
   poweredByHeader: false,
   reactCompiler: true,
+  // Voice transcription (lib/ai/speech.ts) talks gRPC; load these from
+  // node_modules at runtime instead of bundling them.
+  serverExternalPackages: ["@grpc/grpc-js", "protobufjs"],
 };
 
 export default withBotId(nextConfig);

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ChevronDownIcon, MicIcon, SquareIcon, XIcon } from "lucide-react";
+import { CheckIcon, MicIcon, SquareIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
   useCallback,
@@ -12,15 +12,15 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   VOICE_LANGUAGES,
   type VoiceLanguage,
   type VoiceState,
+  voiceLanguageInfo,
 } from "@/hooks/use-voice-recorder";
 import { cn } from "@/lib/utils";
 
@@ -199,11 +199,14 @@ function useElapsedSeconds(startedAt: number, running: boolean) {
  */
 export function VoicePanel({
   getLevel,
+  lang,
   recording,
   startedAt,
   transcript,
 }: {
   getLevel: () => number;
+  /** The language being spoken (chosen before recording started). */
+  lang: VoiceLanguage;
   /** False while settling (transcribing / sending). */
   recording: boolean;
   startedAt: number;
@@ -227,7 +230,7 @@ export function VoicePanel({
       >
         {empty ? (
           <span className="select-none text-foreground/35">
-            {recording ? "Listening…" : ""}
+            {recording ? `Listening in ${voiceLanguageInfo(lang).label}…` : ""}
           </span>
         ) : (
           <p className="break-words">
@@ -253,70 +256,24 @@ export function VoicePanel({
 
 /* --------------------------------------------------------------- controls */
 
-function VoiceLanguageMenu({
-  lang,
-  onLangChange,
-}: {
-  lang: VoiceLanguage;
-  onLangChange: (lang: VoiceLanguage) => void;
-}) {
-  const handleValueChange = useCallback(
-    (value: string) => onLangChange(value as VoiceLanguage),
-    [onLangChange]
-  );
-  const current =
-    VOICE_LANGUAGES.find((option) => option.id === lang) ?? VOICE_LANGUAGES[0];
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          aria-label={`Voice language: ${current.label}`}
-          className="flex h-8 items-center gap-1 rounded-full px-2.5 text-[12px] text-foreground/55 transition-colors hover:bg-foreground/[0.06] hover:text-foreground/90"
-          type="button"
-        >
-          {current.short}
-          <ChevronDownIcon className="size-3 opacity-60" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-40" side="top">
-        <DropdownMenuLabel className="text-[11px] text-muted-foreground">
-          I'm speaking in
-        </DropdownMenuLabel>
-        <DropdownMenuRadioGroup onValueChange={handleValueChange} value={lang}>
-          {VOICE_LANGUAGES.map((option) => (
-            <DropdownMenuRadioItem
-              className="text-[13px]"
-              key={option.id}
-              value={option.id}
-            >
-              {option.label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-/** Footer while recording: language, cancel, and stop (which sends). */
+/** Footer while recording: the chosen language, cancel, and stop (sends). */
 export function VoiceControls({
   lang,
   onCancel,
-  onLangChange,
   onSend,
   state,
 }: {
   lang: VoiceLanguage;
   onCancel: () => void;
-  onLangChange: (lang: VoiceLanguage) => void;
   onSend: () => void;
   state: VoiceState | "sending";
 }) {
   const recording = state === "listening";
+  const language = voiceLanguageInfo(lang);
 
   // Esc cancels, Enter stops and sends (unless a menu is handling keys).
   useEffect(() => {
-    if (!recording) {
+    if (state === "idle" || state === "sending") {
       return;
     }
     const onKeyDown = (event: KeyboardEvent) => {
@@ -326,27 +283,39 @@ export function VoiceControls({
       if (event.key === "Escape") {
         event.preventDefault();
         onCancel();
-      } else if (event.key === "Enter" && !event.shiftKey) {
+      } else if (event.key === "Enter" && !event.shiftKey && recording) {
         event.preventDefault();
         onSend();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onCancel, onSend, recording]);
+  }, [onCancel, onSend, recording, state]);
 
   return (
     <div className="flex w-full items-center justify-between gap-2">
-      <VoiceLanguageMenu lang={lang} onLangChange={onLangChange} />
+      {/* Read-only: the language is chosen before recording starts. */}
+      <span
+        className="flex h-8 select-none items-center rounded-full px-2.5 text-[12px] text-foreground/55"
+        data-testid="voice-language"
+        title={`Speaking ${language.name}`}
+      >
+        <span className="sr-only">Speaking </span>
+        {language.label}
+      </span>
       <div className="flex items-center gap-1">
         <button
-          aria-label="Cancel voice message"
+          aria-label={
+            state === "finishing"
+              ? "Cancel transcription"
+              : "Cancel voice message"
+          }
           className={cn(
             ghostButton,
-            "size-8 disabled:opacity-40 max-md:size-9"
+            "size-8 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 max-md:size-9"
           )}
           data-testid="voice-cancel"
-          disabled={!recording}
+          disabled={state === "sending" || state === "idle"}
           onClick={onCancel}
           type="button"
         >
@@ -354,8 +323,10 @@ export function VoiceControls({
         </button>
         <ComposerVoiceButton
           active={recording}
-          aria-label={recording ? "Stop and send voice message" : "Sending"}
-          className="disabled:opacity-60 max-md:size-9"
+          aria-label={
+            recording ? "Stop and send voice message" : "Transcribing"
+          }
+          className="cursor-pointer disabled:cursor-default disabled:opacity-60 max-md:size-9"
           data-testid="voice-send"
           disabled={!recording}
           onClick={onSend}
@@ -367,21 +338,94 @@ export function VoiceControls({
 
 /* ------------------------------------------------------------- mic button */
 
+/**
+ * The mic asks which language the student will speak first, and recording
+ * starts only once they pick one, so the recogniser is set up for the right
+ * language from the first word. The last language used is marked.
+ */
 export function MicButton({
   disabled,
-  onClick,
+  lang,
+  onPick,
 }: {
   disabled: boolean;
-  onClick: () => void;
+  /** The language used last time. */
+  lang: VoiceLanguage;
+  onPick: (lang: VoiceLanguage) => void;
 }) {
+  const handleCloseAutoFocus = useCallback((event: Event) => {
+    // Recording replaces the mic button; don't pull focus back to it.
+    event.preventDefault();
+  }, []);
+
   return (
-    <ComposerVoiceButton
-      active={false}
-      className="disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent max-md:size-9"
-      data-testid="voice-button"
-      disabled={disabled}
-      onClick={onClick}
-      title="Record a voice message"
-    />
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild disabled={disabled}>
+        <ComposerVoiceButton
+          active={false}
+          aria-label="Record a voice message"
+          className="cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent max-md:size-9"
+          data-testid="voice-button"
+          disabled={disabled}
+          title="Record a voice message"
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="min-w-52"
+        data-testid="voice-language-menu"
+        onCloseAutoFocus={handleCloseAutoFocus}
+        side="top"
+      >
+        <DropdownMenuLabel className="text-[11px] text-muted-foreground">
+          Which language will you speak?
+        </DropdownMenuLabel>
+        {VOICE_LANGUAGES.map((option) => (
+          <LanguageItem
+            key={option.id}
+            last={option.id === lang}
+            onPick={onPick}
+            option={option}
+          />
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function LanguageItem({
+  last,
+  onPick,
+  option,
+}: {
+  last: boolean;
+  onPick: (lang: VoiceLanguage) => void;
+  option: (typeof VOICE_LANGUAGES)[number];
+}) {
+  const handleSelect = useCallback(() => onPick(option.id), [onPick, option]);
+  return (
+    <DropdownMenuItem
+      className={cn(
+        "min-h-10 cursor-pointer gap-2 text-[14px]",
+        last && "bg-foreground/[0.05]"
+      )}
+      data-last={last || undefined}
+      data-testid={`voice-language-${option.speech}`}
+      onSelect={handleSelect}
+    >
+      <MicIcon className="size-3.5 text-muted-foreground" />
+      <span className="flex-1">{option.label}</span>
+      {option.label === option.name ? null : (
+        <span className="text-[11px] text-muted-foreground">{option.name}</span>
+      )}
+      {last ? (
+        <CheckIcon
+          aria-label="Last used"
+          className="size-3.5 text-foreground/70"
+        />
+      ) : (
+        <span aria-hidden className="size-3.5" />
+      )}
+    </DropdownMenuItem>
   );
 }
