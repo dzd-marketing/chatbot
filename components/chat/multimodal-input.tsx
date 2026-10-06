@@ -38,6 +38,7 @@ import {
   ModelSelectorName,
   ModelSelectorTrigger,
 } from "@/components/ai-elements/model-selector";
+import { useActiveChat } from "@/hooks/use-active-chat";
 import { useChatModel, useChatModels } from "@/hooks/use-chat-models";
 import {
   type ChatModel,
@@ -46,6 +47,7 @@ import {
 } from "@/lib/ai/models";
 import { prepareImageForUpload } from "@/lib/image-compress";
 import { isExternalUrl, PRIVACY_URL, TERMS_URL } from "@/lib/legal";
+import { featureMessage, type StudyFeature } from "@/lib/study-features";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
@@ -66,7 +68,7 @@ import {
   SlashCommandMenu,
   slashCommands,
 } from "./slash-commands";
-import { SuggestedActions } from "./suggested-actions";
+import { FeatureChip, StudyFeatureCards } from "./study-features";
 import type { VisibilityType } from "./visibility-selector";
 
 /** Documents are read as text on the server (api/files/upload). */
@@ -111,7 +113,6 @@ function PureMultimodalInput({
   setMessages,
   sendMessage,
   className,
-  selectedVisibilityType,
   selectedModelId,
   onModelChange,
   editingMessage,
@@ -183,6 +184,27 @@ function PureMultimodalInput({
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const [slashIndex, setSlashIndex] = useState(0);
+
+  // Study feature picked from the welcome cards (shown as a chip).
+  const [feature, setFeature] = useState<StudyFeature | null>(null);
+  const { toolSettings, setToolEnabled } = useActiveChat();
+  const handleFeatureSelect = useCallback(
+    (picked: StudyFeature) => {
+      setFeature(picked);
+      // Make sure the tools the feature needs are switched on.
+      for (const id of picked.tools) {
+        if (!toolSettings[id]) {
+          setToolEnabled(id, true);
+        }
+      }
+      textareaRef.current?.focus();
+    },
+    [setToolEnabled, toolSettings]
+  );
+  const clearFeature = useCallback(() => {
+    setFeature(null);
+    textareaRef.current?.focus();
+  }, []);
 
   const handleInput = useCallback(
     (event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -279,7 +301,7 @@ function PureMultimodalInput({
           url: attachment.url,
         })),
         {
-          text: input,
+          text: feature ? featureMessage(feature, input) : input,
           type: "text",
         },
       ],
@@ -287,6 +309,7 @@ function PureMultimodalInput({
     });
 
     setAttachments([]);
+    setFeature(null);
     setLocalStorageInput("");
     setInput("");
 
@@ -295,6 +318,7 @@ function PureMultimodalInput({
     }
   }, [
     input,
+    feature,
     setInput,
     attachments,
     sendMessage,
@@ -461,6 +485,11 @@ function PureMultimodalInput({
     setSlashOpen(false);
   }, []);
 
+  // A feature like "Summarize document" can be sent with just a file.
+  const canSend =
+    input.trim().length > 0 ||
+    (attachments.length > 0 && (!feature || feature.attachmentOnly === true));
+
   const handlePromptSubmit = useCallback(() => {
     if (input.startsWith("/")) {
       const query = input.slice(1).trim();
@@ -470,7 +499,7 @@ function PureMultimodalInput({
       }
       return;
     }
-    if (!input.trim() && attachments.length === 0) {
+    if (!canSend) {
       return;
     }
     if (status === "ready" || status === "error") {
@@ -478,7 +507,7 @@ function PureMultimodalInput({
     } else {
       toast.error("Please wait for the model to finish its response!");
     }
-  }, [attachments.length, handleSlashSelect, input, status, submitForm]);
+  }, [canSend, handleSlashSelect, input, status, submitForm]);
 
   const handleTextareaKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -509,6 +538,12 @@ function PureMultimodalInput({
           return;
         }
       }
+      // Backspace in an empty input removes the feature chip.
+      if (e.key === "Backspace" && feature && input.length === 0) {
+        e.preventDefault();
+        setFeature(null);
+        return;
+      }
       if (e.key === "Escape" && editingMessage && onCancelEdit) {
         e.preventDefault();
         onCancelEdit();
@@ -516,7 +551,9 @@ function PureMultimodalInput({
     },
     [
       editingMessage,
+      feature,
       handleSlashSelect,
+      input.length,
       onCancelEdit,
       slashIndex,
       slashOpen,
@@ -568,6 +605,11 @@ function PureMultimodalInput({
         className="dzd-gradient-border rounded-2xl [&>div]:rounded-2xl [&>div]:border [&>div]:border-border/30 [&>div]:bg-card/70 [&>div]:shadow-[var(--shadow-composer)] [&>div]:has-[[data-slot=input-group-control]:focus-visible]:border-border/30 [&>div]:has-[[data-slot=input-group-control]:focus-visible]:ring-0"
         onSubmit={handlePromptSubmit}
       >
+        {feature && !editingMessage ? (
+          <div className="flex w-full self-start px-3 pt-3">
+            <FeatureChip feature={feature} onRemove={clearFeature} />
+          </div>
+        ) : null}
         {(attachments.length > 0 || uploadQueue.length > 0) && (
           <div
             className="flex w-full self-start flex-row gap-2 overflow-x-auto px-3 pt-3 no-scrollbar"
@@ -607,7 +649,11 @@ function PureMultimodalInput({
             value={input}
           />
           {!editingMessage && input.length === 0 ? (
-            <AnimatedPlaceholder className="pointer-events-none absolute inset-x-0 top-0 select-none overflow-hidden px-4 pt-3.5 text-[14px] text-muted-foreground/55 leading-relaxed" />
+            <AnimatedPlaceholder
+              className="pointer-events-none absolute inset-x-0 top-0 select-none overflow-hidden px-4 pt-3.5 text-[14px] text-muted-foreground/55 leading-relaxed"
+              hints={feature && !editingMessage ? feature.hints : undefined}
+              key={feature?.id ?? "default"}
+            />
           ) : null}
         </div>
         <PromptInputFooter className="px-3 pb-3">
@@ -631,12 +677,12 @@ function PureMultimodalInput({
             <PromptInputSubmit
               className={cn(
                 "h-7 w-7 rounded-xl transition-all duration-200",
-                input.trim()
+                canSend
                   ? "bg-primary text-primary-foreground hover:bg-primary/85 active:scale-95"
                   : "bg-muted text-muted-foreground/25 cursor-not-allowed"
               )}
               data-testid="send-button"
-              disabled={!input.trim() || uploadQueue.length > 0}
+              disabled={!canSend || uploadQueue.length > 0}
               status={status}
               variant="secondary"
             >
@@ -674,11 +720,10 @@ function PureMultimodalInput({
         </motion.p>
       ) : null}
 
-      {isWelcome && attachments.length === 0 && uploadQueue.length === 0 ? (
-        <SuggestedActions
-          chatId={chatId}
-          selectedVisibilityType={selectedVisibilityType}
-          sendMessage={sendMessage}
+      {isWelcome ? (
+        <StudyFeatureCards
+          onSelect={handleFeatureSelect}
+          selectedId={feature?.id}
         />
       ) : null}
     </div>

@@ -2,6 +2,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { useCallback } from "react";
 import type { Vote } from "@/lib/db/schema";
+import { parseFeatureMessage } from "@/lib/study-features";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
 import { MessageContent, MessageResponse } from "../ai-elements/message";
@@ -26,6 +27,7 @@ import { MessageActions } from "./message-actions";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Quiz, QuizSkeleton } from "./quiz";
+import { FeatureChip } from "./study-features";
 import { Weather } from "./weather";
 import {
   isResearchPart,
@@ -253,6 +255,24 @@ const PurePreviewMessage = ({
     }
 
     if (type === "text") {
+      // A request made from a welcome-screen feature card.
+      const featureRequest = isUser ? parseFeatureMessage(part.text) : null;
+      if (featureRequest) {
+        return (
+          <MessageContent
+            className="flex w-fit max-w-[min(80%,56ch)] flex-col items-start gap-2 overflow-hidden break-words rounded-2xl rounded-br-lg border border-border/30 bg-gradient-to-br from-secondary to-muted px-3.5 py-2.5 text-[15px] leading-[1.65] shadow-[var(--shadow-card)]"
+            data-testid="message-content"
+            key={key}
+          >
+            <FeatureChip feature={featureRequest.feature} />
+            {featureRequest.rest ? (
+              <MessageResponse isAnimating={false}>
+                {sanitizeText(featureRequest.rest)}
+              </MessageResponse>
+            ) : null}
+          </MessageContent>
+        );
+      }
       return (
         <MessageContent
           className={cn("text-[15px] leading-[1.65]", {

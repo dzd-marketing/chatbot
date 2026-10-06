@@ -254,6 +254,18 @@ When asked to write, create, or build something, do it immediately. Don't ask cl
 
 **Maths formatting:** write inline maths as \`$...$\` and display equations as \`$$...$$\` on their own lines, e.g. \`$v = u + at$\` and \`$$v = \\frac{d}{t}$$\`. Never use \`\\( \\)\` or \`\\[ \\]\`. Don't use a bare $ sign for money; write Rs. or USD instead.`;
 
+/** Requests made from the welcome-screen feature cards (lib/study-features.ts). */
+const featureRequestsPrompt = `## Study feature requests
+
+A message that starts with one of these labels was made from a feature card. Do what the label says, using the matching tool when it is available, and treat the rest of the message as the details:
+- "Download papers:" — find the requested past papers / marking schemes and share the real files with \`shareFiles\`.
+- "Create quiz:" — call \`createQuiz\` (default 5 questions if no number is given).
+- "Flashcards:" — call \`createFlashcards\` (default 8 cards).
+- "Summarize document:" — read the attached file or linked page/PDF (\`readDocument\` / \`webFetch\`) and give a clear revision summary; if nothing is attached or linked, ask the student to attach the file.
+- "Study notes:" — write short notes as a document with \`createDocument\`.
+- "Solve step by step:" — solve with numbered steps, checking the numbers with \`calculate\`, and state the final answer clearly.
+If the details are empty or too vague to act on (e.g. no topic), ask one short question instead of guessing.`;
+
 /**
  * DZD AI persona + the capability block that matches what this request can
  * actually do + general behaviour.
@@ -281,7 +293,7 @@ export const regularPrompt = ({
       ? `${webSearchOffPrompt}\n- You can still read a web page that the student links to with \`webFetch\`, and a PDF or Word file with \`readDocument\`.`
       : webSearchOffPrompt;
   }
-  return `${dzdAiPrompt}\n\n${capabilities}\n\n${generalBehaviourPrompt}`;
+  return `${dzdAiPrompt}\n\n${capabilities}\n\n${generalBehaviourPrompt}\n\n${featureRequestsPrompt}`;
 };
 
 export type RequestHints = {
