@@ -39,6 +39,7 @@ Everything you write is read aloud by a voice and heard once. The student can't 
 - Acronyms said as letters only if the student would know them (I C T, D N A). Otherwise say the full name.
 - Chemistry in words: "H two O", "carbon dioxide".
 - No ALL CAPS words for emphasis.
+- Plain keyboard punctuation only: a normal hyphen, straight quotes and normal spaces. No special Unicode dashes, hyphens or spaces. Often you can just skip the hyphen: "step by step", "real life".
 
 ### Examples
 Bad: "The formula is v = u + at, where a = 9.8 m/s² (approx.)."

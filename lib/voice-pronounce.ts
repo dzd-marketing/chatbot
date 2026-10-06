@@ -283,6 +283,38 @@ const withScale = (amount: string, scale?: string) =>
 /** "6 p.m." may also end the sentence: keep its full stop. */
 const endDot = (match: string) => (match.endsWith(".") ? "." : "");
 
+/**
+ * Unicode look-alikes the voice can't read, written by some models (for
+ * example "step‑by‑step" with non-breaking hyphens, U+2011) -> plain
+ * characters. Zero-width joiners stay: Sinhala and Tamil letters need them.
+ */
+const LOOK_ALIKES: [RegExp, string][] = [
+  [/[\u00AD\u200B\u2060\uFEFF]/g, ""],
+  // A thin or no-break space between digit groups is a thousands separator.
+  [/(\d)[\u00A0\u2009\u202F](?=\d{3}(?!\d))/g, "$1,"],
+  [/[\u2010\u2011\u2043\uFE63\uFF0D]/g, "-"],
+  [/[\u2012\u2015]/g, "–"],
+  [/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, " "],
+  [/[\u2018\u2019\u201A\u201B\u2032\uFF07]/g, "'"],
+  [/[\u201C\u201D\u201E\u201F\u2033\uFF02]/g, '"'],
+  [/\u2044/g, "/"],
+  [/\u2026/g, "..."],
+  [/½/g, " 1/2"],
+  [/⅓/g, " 1/3"],
+  [/⅔/g, " 2/3"],
+  [/¼/g, " 1/4"],
+  [/¾/g, " 3/4"],
+];
+
+/** Replaces look-alike Unicode punctuation and spaces with plain ones. */
+export function plainCharacters(text: string) {
+  let plain = text;
+  for (const [pattern, replacement] of LOOK_ALIKES) {
+    plain = plain.replace(pattern, replacement);
+  }
+  return plain;
+}
+
 const RULES: Rule[] = [
   // Sri Lankan exams.
   [
@@ -409,6 +441,8 @@ const RULES: Rule[] = [
       return `${[...letters].join(" ")}${word.endsWith("s") ? "s" : ""}`;
     },
   ],
+  // Hyphenated words as separate words: "step-by-step" -> "step by step".
+  [/(\p{L})-(?=\p{L})/gu, "$1 "],
   // Dashes, brackets and slashes read as pauses ("x/y" -> "x or y").
   [/\s*[—–]\s*/g, ", "],
   [/\s+-\s+/g, ", "],
@@ -428,7 +462,7 @@ const RULES: Rule[] = [
 
 /** English text ready for the voice. */
 export function forSpeech(text: string) {
-  let spoken = text;
+  let spoken = plainCharacters(text);
   for (const [pattern, replacement] of RULES) {
     spoken =
       typeof replacement === "string"

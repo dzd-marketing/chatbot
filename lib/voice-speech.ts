@@ -5,6 +5,8 @@
  * can start before the whole reply has arrived.
  */
 
+import { plainCharacters } from "./voice-pronounce";
+
 export type CallLanguage = "en-IN" | "si-LK" | "ta-LK";
 
 /* ----------------------------------------------------------------- voices */
@@ -78,7 +80,7 @@ const SUPERSCRIPTS: Record<string, string> = {
  */
 export function toSpeakable(markdown: string) {
   return (
-    markdown
+    plainCharacters(markdown)
       // Code blocks are not read out.
       .replace(/```[\s\S]*?(```|$)/g, " ")
       .replace(/`([^`]*)`/g, "$1")
