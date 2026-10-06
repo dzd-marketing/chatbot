@@ -21,7 +21,7 @@ import {
 } from "@/hooks/use-voice-recorder";
 import type { ChatMessage } from "@/lib/types";
 import { cn, generateUUID } from "@/lib/utils";
-import { releaseAudioSession } from "@/lib/voice-audio";
+import { releaseAudioSession, setCallAudio } from "@/lib/voice-audio";
 import { type VoiceDepth, voiceDepth } from "@/lib/voice-depth";
 import {
   BACKCHANNELS,
@@ -257,6 +257,8 @@ export function VoiceCall({
         return;
       }
       const id = generateUUID();
+      // The mic has stopped: full playback volume for the reply.
+      setCallAudio("speaking");
       setHistory((turns) => [...turns, { id, role: "user", text }]);
       setReply(null);
       setPhase("thinking");
@@ -339,6 +341,7 @@ export function VoiceCall({
     setPhase("listening");
     if (!mutedRef.current) {
       setError(null);
+      setCallAudio("listening");
       startListening();
     }
   }, [startListening]);

@@ -5,6 +5,7 @@ import {
   checkVoice,
   fetchClip,
   getAudioContext,
+  getVoiceOutput,
   playClip,
   SpeechJob,
   unlockAudio,
@@ -470,7 +471,7 @@ export function useSpeaker(lang: CallLanguage) {
           buffer.copyToChannel(data as Float32Array<ArrayBuffer>, 0);
           const source = ctx.createBufferSource();
           source.buffer = buffer;
-          source.connect(ctx.destination);
+          source.connect(getVoiceOutput(ctx));
           // Ran dry (slow network): carry on straight away.
           endAt = Math.max(endAt, ctx.currentTime + 0.02);
           source.start(endAt);

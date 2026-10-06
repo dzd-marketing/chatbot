@@ -58,6 +58,90 @@ export function unlockAudio() {
   source.start();
 }
 
+/**
+ * iPhones play audio noticeably quieter while the page is set up to record
+ * ("play-and-record"). During a call: "playback" (full volume, still plays
+ * with the ringer switch on silent) while the assistant speaks, and
+ * "play-and-record" while the student talks. Other devices ignore this.
+ */
+export function setCallAudio(mode: "listening" | "speaking") {
+  const nav =
+    typeof navigator === "undefined"
+      ? undefined
+      : (navigator as AudioSessionNavigator);
+  if (!nav?.audioSession) {
+    return;
+  }
+  try {
+    nav.audioSession.type =
+      mode === "speaking" ? "playback" : "play-and-record";
+  } catch {
+    // Older Safari: not adjustable.
+  }
+}
+
+/* ------------------------------------------------------------- loudness */
+
+/**
+ * The cloned voice is as quiet as the recording it copies (about -18 dBFS
+ * speech level, while phone media is around -14). A compressor evens out
+ * loud and soft parts and its automatic make-up gain plus a boost bring
+ * the voice up about 5 dB; a soft clipper rounds off the rare peaks so
+ * nothing ever distorts. Tuned by rendering the voice sample offline:
+ * peak -2.3 -> -0.4 dBFS, speech level -18.1 -> -13.1 dBFS, 0.2% of
+ * samples gently rounded.
+ */
+const LOUDNESS = {
+  attack: 0.001,
+  boost: 1.8,
+  knee: 12,
+  ratio: 6,
+  release: 0.25,
+  threshold: -28,
+} as const;
+/** The soft clipper is straight up to here, then bends below full scale. */
+const SOFT_CLIP_START = 0.8;
+
+function softClipCurve() {
+  const size = 4097;
+  const curve = new Float32Array(size);
+  const room = 1 - SOFT_CLIP_START;
+  for (let index = 0; index < size; index += 1) {
+    const x = (index / (size - 1)) * 2 - 1;
+    const level = Math.abs(x);
+    const shaped =
+      level <= SOFT_CLIP_START
+        ? level
+        : SOFT_CLIP_START + room * Math.tanh((level - SOFT_CLIP_START) / room);
+    curve[index] = Math.sign(x) * Math.min(shaped, 0.99);
+  }
+  return curve;
+}
+
+let voiceOutput: { context: AudioContext; input: AudioNode } | null = null;
+
+/** Where the assistant's voice is played: louder, never distorted. */
+export function getVoiceOutput(ctx: AudioContext): AudioNode {
+  if (voiceOutput?.context === ctx) {
+    return voiceOutput.input;
+  }
+  const compressor = ctx.createDynamicsCompressor();
+  compressor.threshold.value = LOUDNESS.threshold;
+  compressor.knee.value = LOUDNESS.knee;
+  compressor.ratio.value = LOUDNESS.ratio;
+  compressor.attack.value = LOUDNESS.attack;
+  compressor.release.value = LOUDNESS.release;
+  const boost = ctx.createGain();
+  boost.gain.value = LOUDNESS.boost;
+  const clipper = ctx.createWaveShaper();
+  clipper.curve = softClipCurve();
+  // No oversampling: its filter can ring past full scale.
+  clipper.oversample = "none";
+  compressor.connect(boost).connect(clipper).connect(ctx.destination);
+  voiceOutput = { context: ctx, input: compressor };
+  return compressor;
+}
+
 /** Back to the default audio behaviour once a call ends. */
 export function releaseAudioSession() {
   const nav =
@@ -225,7 +309,7 @@ export function playClip(buffer: AudioBuffer, volume = 1) {
   source.buffer = buffer;
   const gain = ctx.createGain();
   gain.gain.value = volume;
-  source.connect(gain).connect(ctx.destination);
+  source.connect(gain).connect(getVoiceOutput(ctx));
   source.start();
   return true;
 }
