@@ -4,6 +4,20 @@
 @source "../node_modules/streamdown/dist/index.js";
 
 @custom-variant dark (&:is(.dark, .dark *));
+/* The UI components use data-open:/data-closed:, but Radix marks state with
+   data-state="open"/"closed"; without these, their animations never run. */
+@custom-variant data-open {
+  &:where([data-state="open"]),
+  &:where([data-open]:not([data-open="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-closed {
+  &:where([data-state="closed"]),
+  &:where([data-closed]:not([data-closed="false"])) {
+    @slot;
+  }
+}
 
 @plugin "tailwindcss-animate";
 @plugin "@tailwindcss/typography";
