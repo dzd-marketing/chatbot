@@ -2,3 +2,4 @@
 torch>=2.5
 pocket-tts[audio]==3.3.0
 soundfile>=0.12
+audiotsm>=0.1.2
