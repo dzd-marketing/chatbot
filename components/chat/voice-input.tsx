@@ -410,7 +410,7 @@ function LanguageItem({
         last && "bg-foreground/[0.05]"
       )}
       data-last={last || undefined}
-      data-testid={`voice-language-${option.speech}`}
+      data-testid={`voice-language-${option.id}`}
       onSelect={handleSelect}
     >
       <MicIcon className="size-3.5 text-muted-foreground" />

@@ -125,7 +125,7 @@ export function voiceMessagesForModel<T extends UIMessage>(messages: T[]): T[] {
     const parts = message.parts.map((part) =>
       isVoiceAudioPart(part)
         ? {
-            text: "[The student sent a voice message. The text below is an automatic transcript of it, so it may contain small recognition mistakes.]",
+            text: "[The student sent a voice message. The text below is the browser's transcript of it, so it may contain small recognition mistakes.]",
             type: "text" as const,
           }
         : part
@@ -188,36 +188,6 @@ export function speechSegments(envelope: VoiceEnvelope) {
 }
 
 /**
- * Without recogniser timestamps (the transcript came from the server after
- * the recording): words share all of the speech in order, by their rough
- * spoken length, skipping the pauses between stretches.
- */
-function spreadOverSpeech(
-  words: readonly string[],
-  segments: readonly { start: number; end: number }[]
-) {
-  const weights = words.map(wordWeight);
-  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-  const totalSpeech = segments.reduce(
-    (sum, segment) => sum + (segment.end - segment.start),
-    0
-  );
-  let elapsed = 0;
-  return weights.map((weight) => {
-    let position = (elapsed / totalWeight) * totalSpeech;
-    elapsed += weight;
-    for (const segment of segments) {
-      const length = segment.end - segment.start;
-      if (position < length) {
-        return segment.start + position;
-      }
-      position -= length;
-    }
-    return segments.at(-1)?.end ?? 0;
-  });
-}
-
-/**
  * Word timings from the recording itself: the loudness shows where speech
  * actually is, and the recogniser's (late) timestamps only decide which
  * stretch of speech each word belongs to. Inside a stretch, words share
@@ -245,15 +215,6 @@ export function alignVoiceWords(
 
   // Which stretch each word was spoken in (never going backwards).
   const owner: number[] = [];
-  if (!heardAt.some(Number.isFinite)) {
-    return buildVoiceData(
-      transcript,
-      spreadOverSpeech(words, segments).map((start) =>
-        Math.max(0, start - LEAD_MS)
-      ),
-      duration
-    );
-  }
   let current = 0;
   for (let index = 0; index < words.length; index += 1) {
     const heard = heardAt[index];
