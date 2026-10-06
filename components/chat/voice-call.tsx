@@ -21,6 +21,7 @@ import {
 } from "@/hooks/use-voice-recorder";
 import type { ChatMessage } from "@/lib/types";
 import { cn, generateUUID } from "@/lib/utils";
+import { releaseAudioSession } from "@/lib/voice-audio";
 import {
   BACKCHANNELS,
   type BackchannelKind,
@@ -319,7 +320,7 @@ export function VoiceCall({
     (picked: CallLanguage) => {
       setLastLanguage(picked);
       setLang(picked);
-      unlock();
+      unlock(picked);
       openRef.current = true;
       mutedRef.current = false;
       pendingRef.current = null;
@@ -352,6 +353,7 @@ export function VoiceCall({
     }
     stopListening();
     cancelSpeech();
+    releaseAudioSession();
     setOpen(false);
     // A reply still streaming carries on into the chat.
   }, [cancelSpeech, stopListening]);
