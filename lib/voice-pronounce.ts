@@ -368,6 +368,21 @@ const RULES: Rule[] = [
     (match, hour, half) =>
       `${numberToWords(Number(hour))} ${half.toLowerCase()} m${endDot(match)}`,
   ],
+  // Chemical formulas: CO2 -> "C O two", 6H2O -> "six H two O".
+  [
+    /\b(\d{0,2})((?:[A-Z][a-z]?\d{0,3}){1,8})\b/g,
+    (match, coefficient: string, formula: string) => {
+      if (!(coefficient || /\d/.test(formula))) {
+        return match;
+      }
+      const elements = formula.replace(
+        /([A-Z][a-z]?)(\d*)/g,
+        (_m, element: string, count: string) =>
+          ` ${element}${count ? ` ${numberToWords(Number(count))}` : ""}`
+      );
+      return `${coefficient ? numberToWords(Number(coefficient)) : ""}${elements}`.trim();
+    },
+  ],
   // Ranges: 10-20, 1990–2000 (with spaces around "-" it's a minus).
   [
     new RegExp(String.raw`\b(${NUM})(?:-|\s?[–—]\s?)(${NUM})\b`, "g"),

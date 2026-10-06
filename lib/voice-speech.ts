@@ -74,6 +74,16 @@ const SUPERSCRIPTS: Record<string, string> = {
   "³": " cubed",
 };
 
+const ENTITIES: Record<string, string> = {
+  "#39": "'",
+  amp: "&",
+  apos: "'",
+  gt: ">",
+  lt: "<",
+  nbsp: " ",
+  quot: '"',
+};
+
 /**
  * Plain text for a text-to-speech voice: no markdown, links, code, emoji or
  * LaTeX, with a few symbols said in words.
@@ -81,6 +91,14 @@ const SUPERSCRIPTS: Record<string, string> = {
 export function toSpeakable(markdown: string) {
   return (
     plainCharacters(markdown)
+      // HTML entities ("&amp;") would be read letter by letter.
+      .replace(
+        /&(amp|lt|gt|quot|apos|nbsp|#39);/g,
+        (_m, name: string) => ENTITIES[name] ?? " "
+      )
+      .replace(/&#(\d{2,5});/g, (_m, code: string) =>
+        String.fromCodePoint(Number(code))
+      )
       // Code blocks are not read out.
       .replace(/```[\s\S]*?(```|$)/g, " ")
       .replace(/`([^`]*)`/g, "$1")
@@ -88,6 +106,19 @@ export function toSpeakable(markdown: string) {
       .replace(/\$\$([\s\S]*?)\$\$/g, "$1")
       .replace(/\$([^$\n]+)\$/g, "$1")
       .replace(/\\\(|\\\)|\\\[|\\\]/g, " ")
+      // Chemistry and text inside maths: \\ce{CO2} -> CO2.
+      .replace(
+        /\\(?:ce|pu|text|textrm|textbf|mathrm|mathbf|operatorname)\s*\{([^{}]*)\}/g,
+        "$1"
+      )
+      .replace(/\\[,;:!]|\\q?quad\b/g, " ")
+      // Reaction arrows: "->[light]" -> "with light gives".
+      .replace(/\s*-+>\s*\[([^\]]+)\]\s*/g, " with $1 gives ")
+      .replace(
+        /\s*(?:<=>|<->|\\rightleftharpoons|⇌)\s*/g,
+        " is in balance with "
+      )
+      .replace(/\s*(?:-+>|\\(?:long)?rightarrow\b|\\to\b|→|⟶)\s*/g, " gives ")
       .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, "$1 over $2")
       .replace(/\\sqrt\{([^}]*)\}/g, "the square root of $1")
       .replace(/\\(times|cdot)/g, " times ")
@@ -100,6 +131,7 @@ export function toSpeakable(markdown: string) {
         " $1 "
       )
       .replace(/\\[a-zA-Z]+/g, " ")
+      .replace(/[{}]/g, "")
       .replace(/\^2\b/g, " squared")
       .replace(/\^3\b/g, " cubed")
       .replace(/[²³]/g, (match) => SUPERSCRIPTS[match] ?? match)
@@ -116,6 +148,7 @@ export function toSpeakable(markdown: string) {
       .replace(/^\s{0,3}#{1,6}\s+/gm, "")
       .replace(/^\s*>\s?/gm, "")
       .replace(/^\s*[-*+•]\s+/gm, "")
+      .replace(/^\s*\d{1,2}[.)]\s+/gm, "")
       .replace(/^\s*\|?[\s:-]*\|[\s|:-]*$/gm, " ")
       .replace(/\|/g, ", ")
       .replace(/(\*\*|__|\*|_|~~)(.+?)\1/g, "$2")

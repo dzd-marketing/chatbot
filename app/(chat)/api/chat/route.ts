@@ -5,9 +5,11 @@ import {
   createUIMessageStreamResponse,
   generateId,
   isStepCount,
+  type ModelMessage,
   smoothStream,
   streamText,
   toUIMessageStream,
+  type UserContent,
 } from "ai";
 import { checkBotId } from "botid/server";
 import { after } from "next/server";
@@ -20,7 +22,11 @@ import {
   dzdLearnModel,
   resolveReasoningLevel,
 } from "@/lib/ai/models";
-import { type RequestHints, systemPrompt, voicePrompt } from "@/lib/ai/prompts";
+import {
+  type RequestHints,
+  systemPrompt,
+  voiceSystemPrompt,
+} from "@/lib/ai/prompts";
 import { getLanguageModel } from "@/lib/ai/providers";
 import { describeError, routerErrorMessage } from "@/lib/ai/router";
 import { createPrepareStep, MAX_STEPS } from "@/lib/ai/step-limits";
@@ -79,6 +85,22 @@ function isModelStreamActivity(chunk: { type: string }) {
   return !["start", "start-step", "finish-step", "finish", "raw"].includes(
     chunk.type
   );
+}
+
+const SPOKEN_REMINDER =
+  "\n\n(Voice call: reply in one to three short spoken sentences, plain words only. No lists, headings, symbols or formulas.)";
+
+/** Adds the voice-call reminder to the newest student message. */
+function withSpokenReminder(messages: ModelMessage[]): ModelMessage[] {
+  const last = messages.at(-1);
+  if (last?.role !== "user") {
+    return messages;
+  }
+  const content: UserContent =
+    typeof last.content === "string"
+      ? `${last.content}${SPOKEN_REMINDER}`
+      : [...last.content, { text: SPOKEN_REMINDER.trim(), type: "text" }];
+  return [...messages.slice(0, -1), { ...last, content }];
 }
 
 function getStreamContext() {
@@ -237,12 +259,17 @@ export async function POST(request: Request) {
     // Uploaded PDF / Word / text files become text the model can read.
     // Voice messages: the model reads the transcript, not the audio.
     // (The CPU fallback model gets a shorter version; see the router.)
-    const modelMessages = await convertToModelMessages(
+    const convertedMessages = await convertToModelMessages(
       inlineDocumentAttachments(voiceMessagesForModel(uiMessages), {
         perDocumentChars: 60_000,
         totalChars: 120_000,
       })
     );
+    // In a call, remind the model right next to the newest message that the
+    // reply is spoken: earlier written answers in the chat pull the other way.
+    const modelMessages = voice
+      ? withSpokenReminder(convertedMessages)
+      : convertedMessages;
 
     const stream = createUIMessageStream({
       execute: async ({ writer: dataStream }) => {
@@ -333,37 +360,49 @@ export async function POST(request: Request) {
         };
 
         const enabledTools = supportsTools ? activeToolNames(toolSettings) : [];
-        // Spoken replies in a voice conversation.
-        const spoken = voice
-          ? `\n\n${voicePrompt(voice.language, {
-              interruptedAfter: heardOfLastReply(
-                uiMessages,
-                voice.interruptedAfterWords
-              ),
-            })}`
-          : "";
-        const instructions = `${systemPrompt({
-          builtInWebSearch: false,
-          calculator: toolSettings.calculator,
-          documents: toolSettings.documents,
-          pageReading: toolSettings.webFetch,
-          requestHints,
-          study: toolSettings.study,
-          supportsTools,
-          webSearch: toolSettings.webSearch,
-        })}${spoken}`;
+        // A voice call gets its own system prompt instead of the chat one:
+        // the chat prompt asks for headings, lists, LaTeX and links.
+        const interruptedAfter = voice
+          ? heardOfLastReply(uiMessages, voice.interruptedAfterWords)
+          : undefined;
+        const voiceInstructions = (builtInWebSearch: boolean) =>
+          voice
+            ? voiceSystemPrompt({
+                builtInWebSearch,
+                calculator: toolSettings.calculator,
+                interruptedAfter,
+                language: voice.language,
+                requestHints,
+                supportsTools: builtInWebSearch ? false : supportsTools,
+                webSearch: toolSettings.webSearch,
+              })
+            : null;
+        const instructions =
+          voiceInstructions(false) ??
+          systemPrompt({
+            builtInWebSearch: false,
+            calculator: toolSettings.calculator,
+            documents: toolSettings.documents,
+            pageReading: toolSettings.webFetch,
+            requestHints,
+            study: toolSettings.study,
+            supportsTools,
+            webSearch: toolSettings.webSearch,
+          });
         // If the reply falls back to DZD's own model: it searches the web on
         // its own server and has none of the website's tools.
-        const dzdInstructions = `${systemPrompt({
-          builtInWebSearch: true,
-          calculator: false,
-          documents: false,
-          pageReading: false,
-          requestHints,
-          study: false,
-          supportsTools: false,
-          webSearch: toolSettings.webSearch,
-        })}${spoken}`;
+        const dzdInstructions =
+          voiceInstructions(true) ??
+          systemPrompt({
+            builtInWebSearch: true,
+            calculator: false,
+            documents: false,
+            pageReading: false,
+            requestHints,
+            study: false,
+            supportsTools: false,
+            webSearch: toolSettings.webSearch,
+          });
 
         const result = streamText({
           // Models without tool support get no tools at all (llama.cpp, for
