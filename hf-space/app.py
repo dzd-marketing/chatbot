@@ -54,6 +54,24 @@ VOICE_AUDIO = HERE / "voice.mp3"
 # A ready-made voice embedding, if one was uploaded (loads instantly).
 VOICE_EMBEDDING = HERE / "voice.safetensors"
 VOICE_CACHE = Path("/tmp/dzd-voice.safetensors")
+# Built-in female English voices (Kyutai's catalog), usable without cloning.
+FEMALE_VOICES = {
+    "alba": "Alba (warm, casual)",
+    "jane": "Jane",
+    "mary": "Mary",
+    "eve": "Eve",
+    "anna": "Anna",
+    "vera": "Vera",
+    "fantine": "Fantine",
+    "eponine": "Eponine",
+    "azelma": "Azelma",
+}
+CUSTOM = "custom"
+# The website's voice: "custom" (the recording) or one of FEMALE_VOICES.
+# Change it with the Space variable VOICE (Settings -> Variables).
+CHOSEN_VOICE = os.environ.get("VOICE", CUSTOM).strip().lower() or CUSTOM
+if CHOSEN_VOICE != CUSTOM and CHOSEN_VOICE not in FEMALE_VOICES:
+    CHOSEN_VOICE = CUSTOM
 FALLBACK_VOICE = os.environ.get("FALLBACK_VOICE", "alba")
 MAX_CHARS = 600
 # Requests wait this long for a free worker before giving up (the website
@@ -88,7 +106,10 @@ def load_model() -> TTSModel:
 
 
 def load_voice(model: TTSModel):
-    """The DZD voice from the recording, else a built-in voice."""
+    """The chosen voice: the recording (cloned) or a built-in female voice."""
+    if CHOSEN_VOICE != CUSTOM:
+        log.info("Using the built-in voice '%s'", CHOSEN_VOICE)
+        return model.get_state_for_audio_prompt(CHOSEN_VOICE), CHOSEN_VOICE
     if VOICE_EMBEDDING.exists():
         log.info("Using the uploaded voice embedding")
         return model.get_state_for_audio_prompt(VOICE_EMBEDDING), "custom"
@@ -129,6 +150,27 @@ started_loading = time.perf_counter()
 MODELS = [load_model() for _ in range(WORKERS)]
 VOICE, VOICE_KIND = load_voice(MODELS[0])
 SAMPLE_RATE = MODELS[0].sample_rate
+# Voice states by name, so other voices can be tried without reloading.
+_voices: dict[str, object] = {VOICE_KIND: VOICE}
+_voices_lock = threading.Lock()
+
+
+def voice_state(name: str | None):
+    """The state for a voice name ("custom", a female voice) or the default."""
+    name = (name or "").strip().lower()
+    if name == CUSTOM and VOICE_KIND != CUSTOM and CUSTOM not in _voices:
+        if not (VOICE_AUDIO.exists() and MODELS[0].has_voice_cloning):
+            raise ValueError("cloning unavailable")
+        with _voices_lock:
+            if CUSTOM not in _voices:
+                _voices[CUSTOM] = MODELS[0].get_state_for_audio_prompt(
+                    VOICE_AUDIO, truncate=True
+                )
+    if name in FEMALE_VOICES:
+        with _voices_lock:
+            if name not in _voices:
+                _voices[name] = MODELS[0].get_state_for_audio_prompt(name)
+    return _voices.get(name, VOICE)
 log.info("Models ready in %.1fs (voice: %s)", time.perf_counter() - started_loading, VOICE_KIND)
 
 
@@ -185,6 +227,7 @@ async def health() -> JSONResponse:
             "sample_rate": SAMPLE_RATE,
             "speed": SPEED,
             "voice": VOICE_KIND,
+            "voices": [CUSTOM, *FEMALE_VOICES],
             "workers": WORKERS,
         },
         headers={"Cache-Control": "no-store"},
@@ -202,6 +245,11 @@ async def tts(request: Request):
     text = clean_text(body.get("text", "") if isinstance(body, dict) else "")
     if not re.search(r"\w", text):
         return JSONResponse({"error": "no text"}, status_code=400)
+    requested = body.get("voice") if isinstance(body, dict) else None
+    try:
+        state = await asyncio.to_thread(voice_state, requested)
+    except ValueError:
+        state = VOICE
 
     pool = ensure_pool()
     try:
@@ -215,7 +263,7 @@ async def tts(request: Request):
 
     def work() -> None:
         try:
-            for chunk in model.generate_audio_stream(VOICE, text, stop=stop):
+            for chunk in model.generate_audio_stream(state, text, stop=stop):
                 loop.call_soon_threadsafe(chunks.put_nowait, to_pcm16(chunk))
                 if stop.is_set():
                     break
@@ -251,27 +299,51 @@ async def tts(request: Request):
     )
 
 
-async def try_voice(text: str, key: str = ""):
+VOICE_CHOICES = [("My recording (cloned)", CUSTOM)] + [
+    (f"{label} - female", name) for name, label in FEMALE_VOICES.items()
+]
+
+
+async def try_voice(text: str, voice: str, key: str = ""):
     if API_KEY and key != API_KEY:
         raise gr.Error("Enter the voice key to try the voice.")
     text = clean_text(text)
     if not text:
         raise gr.Error("Type something to say.")
+    try:
+        state = await asyncio.to_thread(voice_state, voice)
+    except ValueError:
+        raise gr.Error(
+            "Cloning your recording isn't available yet: accept the terms at "
+            "huggingface.co/kyutai/pocket-tts and add the HF_TOKEN secret."
+        ) from None
     pool = ensure_pool()
     model = await pool.get()  # waits its turn with the website's requests
     try:
-        audio = await asyncio.to_thread(model.generate_audio, VOICE, text)
+        audio = await asyncio.to_thread(model.generate_audio, state, text)
     finally:
         pool.put_nowait(model)
     return SAMPLE_RATE, audio.detach().float().clamp(-1, 1).cpu().numpy().astype(np.float32)
 
 
+if VOICE_KIND == CUSTOM:
+    VOICE_NOTE = "your recording (cloned)"
+elif VOICE_KIND == "fallback":
+    VOICE_NOTE = (
+        f"built-in '{FALLBACK_VOICE}' - cloning your recording is NOT available: accept the "
+        "terms at huggingface.co/kyutai/pocket-tts and add the HF_TOKEN secret"
+    )
+else:
+    VOICE_NOTE = f"built-in '{VOICE_KIND}'"
+
 with gr.Blocks(title="DZD Voice") as demo:
     gr.Markdown(
         "## DZD Learn AI voice\n"
-        f"Voice: **{VOICE_KIND}** · workers: {WORKERS} · CPUs: {CPUS} · "
+        f"Website voice: **{VOICE_NOTE}** · workers: {WORKERS} · CPUs: {CPUS} · "
         f"first audio after warm-up: {SPEED.get('first_audio_ms', '?')} ms · "
         f"{SPEED.get('realtime_factor', '?')}× real time\n\n"
+        "Try the voices below. To change the website's voice, add the variable "
+        "`VOICE` in Settings → Variables (e.g. `jane`, or `custom` for your recording).\n\n"
         "Powered by [Kyutai Pocket TTS](https://github.com/kyutai-labs/pocket-tts) (CC BY 4.0)."
     )
     box = gr.Textbox(
@@ -279,10 +351,15 @@ with gr.Blocks(title="DZD Voice") as demo:
         lines=3,
         value="Hi there! Have you ever wondered how plants make their own food? Let's find out together.",
     )
+    picker = gr.Dropdown(
+        choices=VOICE_CHOICES,
+        label="Voice",
+        value=VOICE_KIND if VOICE_KIND in dict((v, k) for k, v in VOICE_CHOICES) else "alba",
+    )
     key_box = gr.Textbox(label="Voice key", type="password", visible=bool(API_KEY))
     button = gr.Button("Speak", variant="primary")
     player = gr.Audio(label="Voice", autoplay=True)
-    button.click(try_voice, inputs=[box, key_box], outputs=player, concurrency_limit=1)
+    button.click(try_voice, inputs=[box, picker, key_box], outputs=player, concurrency_limit=1)
 
 if __name__ == "__main__":
     demo.queue(default_concurrency_limit=1)
