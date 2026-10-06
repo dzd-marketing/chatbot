@@ -105,6 +105,48 @@ def load_model() -> TTSModel:
     return TTSModel.load_model(quantize=True)
 
 
+# The weights that make cloning possible (Kyutai keeps them behind a
+# terms-of-use gate). Used only to explain why cloning is unavailable.
+GATED_REPO = "kyutai/pocket-tts"
+GATED_FILE = "languages/english/model.safetensors"
+
+
+def cloning_problem() -> str:
+    """Why the cloning weights couldn't be downloaded, in plain words."""
+    token = (os.environ.get("HF_TOKEN") or "").strip()
+    if not token:
+        return (
+            "the Space secret HF_TOKEN is missing (Settings -> Variables and secrets -> "
+            "New secret, name: HF_TOKEN, value: a Read token)"
+        )
+    try:
+        from huggingface_hub import HfApi, get_hf_file_metadata, hf_hub_url
+
+        user = HfApi(token=token).whoami().get("name", "?")
+    except Exception:  # noqa: BLE001
+        return "the HF_TOKEN secret is not a valid token - create a new Read token and paste it again"
+    try:
+        get_hf_file_metadata(hf_hub_url(GATED_REPO, GATED_FILE), token=token)
+    except Exception as error:  # noqa: BLE001
+        lines = [line.strip() for line in str(error).splitlines() if line.strip()]
+        detail = next(
+            (
+                line
+                for line in lines
+                if any(word in line.lower() for word in ("gated", "access", "restricted", "token"))
+            ),
+            lines[0] if lines else type(error).__name__,
+        )
+        return (
+            f"HF_TOKEN belongs to the account '{user}', but it can't open {GATED_REPO}. "
+            f"Hugging Face says: {detail[:300]}"
+        )
+    return (
+        f"HF_TOKEN ('{user}') can open {GATED_REPO} now - restart the Space "
+        "(Settings -> Restart this Space) to clone the voice"
+    )
+
+
 def load_voice(model: TTSModel):
     """The chosen voice: the recording (cloned) or a built-in female voice."""
     if CHOSEN_VOICE != CUSTOM:
@@ -125,13 +167,6 @@ def load_voice(model: TTSModel):
             log.exception("Could not cache the voice embedding")
         log.info("Cloned the DZD voice in %.1fs", time.perf_counter() - started)
         return state, "custom"
-    if VOICE_AUDIO.exists():
-        log.warning(
-            "Voice cloning is not available: accept the terms at "
-            "https://huggingface.co/kyutai/pocket-tts with your account and add "
-            "a read token as the Space secret HF_TOKEN. Using '%s' meanwhile.",
-            FALLBACK_VOICE,
-        )
     return model.get_state_for_audio_prompt(FALLBACK_VOICE), "fallback"
 
 
@@ -150,6 +185,9 @@ started_loading = time.perf_counter()
 MODELS = [load_model() for _ in range(WORKERS)]
 VOICE, VOICE_KIND = load_voice(MODELS[0])
 SAMPLE_RATE = MODELS[0].sample_rate
+CLONE_PROBLEM = "" if MODELS[0].has_voice_cloning else cloning_problem()
+if CLONE_PROBLEM:
+    log.warning("Voice cloning is not available: %s", CLONE_PROBLEM)
 # Voice states by name, so other voices can be tried without reloading.
 _voices: dict[str, object] = {VOICE_KIND: VOICE}
 _voices_lock = threading.Lock()
@@ -313,10 +351,7 @@ async def try_voice(text: str, voice: str, key: str = ""):
     try:
         state = await asyncio.to_thread(voice_state, voice)
     except ValueError:
-        raise gr.Error(
-            "Cloning your recording isn't available yet: accept the terms at "
-            "huggingface.co/kyutai/pocket-tts and add the HF_TOKEN secret."
-        ) from None
+        raise gr.Error(f"Cloning your recording isn't available: {CLONE_PROBLEM}") from None
     pool = ensure_pool()
     model = await pool.get()  # waits its turn with the website's requests
     try:
@@ -329,10 +364,7 @@ async def try_voice(text: str, voice: str, key: str = ""):
 if VOICE_KIND == CUSTOM:
     VOICE_NOTE = "your recording (cloned)"
 elif VOICE_KIND == "fallback":
-    VOICE_NOTE = (
-        f"built-in '{FALLBACK_VOICE}' - cloning your recording is NOT available: accept the "
-        "terms at huggingface.co/kyutai/pocket-tts and add the HF_TOKEN secret"
-    )
+    VOICE_NOTE = f"built-in '{FALLBACK_VOICE}' (your recording can't be cloned yet)"
 else:
     VOICE_NOTE = f"built-in '{VOICE_KIND}'"
 
@@ -342,7 +374,8 @@ with gr.Blocks(title="DZD Voice") as demo:
         f"Website voice: **{VOICE_NOTE}** · workers: {WORKERS} · CPUs: {CPUS} · "
         f"first audio after warm-up: {SPEED.get('first_audio_ms', '?')} ms · "
         f"{SPEED.get('realtime_factor', '?')}× real time\n\n"
-        "Try the voices below. To change the website's voice, add the variable "
+        + (f"⚠️ **Cloning is not available:** {CLONE_PROBLEM}\n\n" if CLONE_PROBLEM else "")
+        + "Try the voices below. To change the website's voice, add the variable "
         "`VOICE` in Settings → Variables (e.g. `jane`, or `custom` for your recording).\n\n"
         "Powered by [Kyutai Pocket TTS](https://github.com/kyutai-labs/pocket-tts) (CC BY 4.0)."
     )
