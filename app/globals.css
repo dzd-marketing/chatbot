@@ -437,6 +437,64 @@ textarea:focus-visible {
   outline: none;
 }
 
+/* Maths (KaTeX) and tables in AI documents. */
+.ProseMirror .dzd-math-display {
+  margin: 1em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+}
+
+.ProseMirror .dzd-math-inline .katex,
+.ProseMirror .dzd-math-display .katex {
+  font-size: 1.08em;
+}
+
+.ProseMirror .ProseMirror-selectednode.dzd-math-inline,
+.ProseMirror .ProseMirror-selectednode.dzd-math-display {
+  outline: 2px solid color-mix(in oklch, var(--brand) 55%, transparent);
+  border-radius: 4px;
+}
+
+.ProseMirror .tableWrapper {
+  margin: 1.25em 0;
+  overflow-x: auto;
+}
+
+.ProseMirror table {
+  width: 100%;
+  margin: 0;
+  table-layout: auto;
+  border-collapse: collapse;
+}
+
+.ProseMirror th,
+.ProseMirror td {
+  position: relative;
+  padding: 0.45em 0.75em;
+  vertical-align: top;
+  text-align: left;
+  border: 1px solid var(--border);
+}
+
+.ProseMirror th {
+  font-weight: 600;
+  background: color-mix(in oklch, var(--brand) 10%, transparent);
+}
+
+.ProseMirror th > p,
+.ProseMirror td > p {
+  margin: 0;
+}
+
+.ProseMirror .selectedCell::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background: color-mix(in oklch, var(--brand) 18%, transparent);
+}
+
 .cm-editor {
   font-family:
     "SF Mono", "Cascadia Code", "Fira Code", "JetBrains Mono", ui-monospace,

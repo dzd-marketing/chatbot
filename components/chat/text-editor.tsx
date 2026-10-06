@@ -3,6 +3,7 @@
 import { exampleSetup } from "prosemirror-example-setup";
 import { inputRules } from "prosemirror-inputrules";
 import { EditorState } from "prosemirror-state";
+import { tableEditing } from "prosemirror-tables";
 import { type Decoration, DecorationSet, EditorView } from "prosemirror-view";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -67,6 +68,7 @@ function PureEditor({
               headingRule(6),
             ],
           }),
+          tableEditing(),
           suggestionsPlugin,
         ],
       });

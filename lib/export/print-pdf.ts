@@ -1,33 +1,25 @@
-import { Marked } from "marked";
+import katex from "katex";
+import {
+  createMarkdown,
+  escapeHtml,
+  prepareMarkdown,
+} from "@/lib/markdown/marked";
 
 /**
  * "Save as PDF": the document is laid out as a clean printable page and the
  * browser's print dialog opens (choose "Save as PDF"). The browser shapes
  * Sinhala and Tamil text properly, which PDF libraries usually don't.
+ * Maths is KaTeX MathML, which browsers draw natively (no fonts needed).
  * Raw HTML in the Markdown is shown as text, never run.
  */
 
-const escapeHtml = (text: string) =>
-  text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-
-const markdown = new Marked({
-  async: false,
-  gfm: true,
-  renderer: {
-    html: ({ text }) => escapeHtml(text),
-  },
-  walkTokens: (token) => {
-    if (
-      (token.type === "link" || token.type === "image") &&
-      !/^(https?:|mailto:|#)/i.test(token.href)
-    ) {
-      token.href = "#";
-    }
-  },
+const markdown = createMarkdown((tex, displayMode) => {
+  const math = katex.renderToString(tex, {
+    displayMode,
+    output: "mathml",
+    throwOnError: false,
+  });
+  return displayMode ? `<div class="math-display">${math}</div>` : math;
 });
 
 const STYLES = `
@@ -59,11 +51,14 @@ th { background: #e7f6ef; }
 tr { break-inside: avoid; }
 hr { border: 0; border-top: 1px solid #ccc; margin: 1.5em 0; }
 img { max-width: 100%; }
+math { font-size: 1.08em; }
+.math-display { margin: 0.9em 0; text-align: center; overflow-x: auto; break-inside: avoid; }
+.math-display math { display: block math; }
 .dzd-footer { margin-top: 2.5em; color: #888; font-size: 8.5pt; text-align: right; }
 `;
 
 export function markdownToPrintableHtml(title: string, source: string) {
-  const body = markdown.parse(source) as string;
+  const body = markdown.parse(prepareMarkdown(source)) as string;
   const startsWithTitle = /^\s*#\s/.test(source);
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>${STYLES}</style></head><body>${startsWithTitle ? "" : `<h1>${escapeHtml(title)}</h1>`}${body}<div class="dzd-footer">DZD Learn</div></body></html>`;
 }

@@ -7,10 +7,14 @@ import type { EditorView } from "prosemirror-view";
 import type { MutableRefObject } from "react";
 
 import { buildContentFromDocument } from "./functions";
+import { mathNodes, tableNodeSpecs } from "./rich-nodes";
 
 export const documentSchema = new Schema({
   marks: schema.spec.marks,
-  nodes: addListNodes(schema.spec.nodes, "paragraph block*", "block"),
+  // Basic nodes + lists + maths (KaTeX) + tables.
+  nodes: addListNodes(schema.spec.nodes, "paragraph block*", "block")
+    .append(tableNodeSpecs)
+    .append(mathNodes),
 });
 
 export function headingRule(level: number) {

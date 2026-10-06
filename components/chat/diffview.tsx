@@ -6,14 +6,12 @@ import {
   Schema,
 } from "prosemirror-model";
 import { schema } from "prosemirror-schema-basic";
-import { addListNodes } from "prosemirror-schema-list";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { useEffect, useRef } from "react";
-import { renderToString } from "react-dom/server";
-
-import { MessageResponse } from "@/components/ai-elements/message";
+import { documentSchema } from "@/lib/editor/config";
 import { DiffType, diffEditor } from "@/lib/editor/diff";
+import { markdownToDom } from "@/lib/editor/functions";
 
 const diffSchema = new Schema({
   marks: OrderedMap.from({
@@ -39,7 +37,8 @@ const diffSchema = new Schema({
       },
     } as MarkSpec,
   }),
-  nodes: addListNodes(schema.spec.nodes, "paragraph block*", "block"),
+  // Same nodes as the editor (lists, maths, tables).
+  nodes: documentSchema.spec.nodes,
 });
 
 function computeDiff(oldDoc: ProsemirrorNode, newDoc: ProsemirrorNode) {
@@ -59,21 +58,8 @@ export const DiffView = ({ oldContent, newContent }: DiffEditorProps) => {
     if (editorRef.current && !viewRef.current) {
       const parser = DOMParser.fromSchema(diffSchema);
 
-      const oldHtmlContent = renderToString(
-        <MessageResponse>{oldContent}</MessageResponse>
-      );
-      const newHtmlContent = renderToString(
-        <MessageResponse>{newContent}</MessageResponse>
-      );
-
-      const oldContainer = document.createElement("div");
-      oldContainer.innerHTML = oldHtmlContent;
-
-      const newContainer = document.createElement("div");
-      newContainer.innerHTML = newHtmlContent;
-
-      const oldDoc = parser.parse(oldContainer);
-      const newDoc = parser.parse(newContainer);
+      const oldDoc = parser.parse(markdownToDom(oldContent));
+      const newDoc = parser.parse(markdownToDom(newContent));
 
       const diffedDoc = computeDiff(oldDoc, newDoc);
 

@@ -372,6 +372,17 @@ Requirements:
 - Keep the data well-structured and meaningful
 `;
 
+/** Formatting rules for text documents (rendered by the document editor). */
+export const textDocumentPrompt = `Write a clear, well-structured study document about the given topic in Markdown.
+- Start with a single "# " title, then use "##" / "###" headings for sections.
+- Use bullet or numbered lists, **bold** for key terms, and GFM tables (| a | b | with a | --- | row) for comparisons or data.
+- Maths: inline as $...$ and display equations on their own lines as
+$$
+...
+$$
+using LaTeX (e.g. $\\mathbf{F} = m\\mathbf{a}$). Never use \\( \\) or \\[ \\], and never put maths inside code blocks or backticks.
+- Output only the document, with no preamble or closing remarks.`;
+
 export const updateDocumentPrompt = (
   currentContent: string | null,
   type: ArtifactKind
@@ -382,8 +393,13 @@ export const updateDocumentPrompt = (
   };
   const mediaType = mediaTypes[type] ?? "document";
 
-  return `Rewrite the following ${mediaType} based on the given prompt.
+  const formatting =
+    type === "text"
+      ? "\nKeep the Markdown format: maths as $...$ or $$...$$ (LaTeX, never \\( \\) or \\[ \\]), GFM tables, headings and lists. Output only the document.\n"
+      : "";
 
+  return `Rewrite the following ${mediaType} based on the given prompt.
+${formatting}
 ${currentContent}`;
 };
 

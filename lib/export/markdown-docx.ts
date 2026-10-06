@@ -4,6 +4,7 @@ import {
   Document,
   ExternalHyperlink,
   HeadingLevel,
+  ImportedXmlComponent,
   LevelFormat,
   Packer,
   Paragraph,
@@ -14,14 +15,21 @@ import {
   TextRun,
   WidthType,
 } from "docx";
-import { lexer, type Token, type Tokens } from "marked";
+import type { Token, Tokens } from "marked";
+import {
+  createMarkdown,
+  type MathToken,
+  prepareMarkdown,
+} from "@/lib/markdown/marked";
+import { texToOmml } from "./omml";
 
 /**
  * Markdown (the format of DZD AI's text documents) -> Word .docx, in the
  * browser. Headings, paragraphs, bold/italic/strike/code, links, bullet and
  * numbered lists, tables, code blocks, quotes and rules are kept. Sinhala
  * and Tamil use "Nirmala UI" (included with Windows) as the complex-script
- * font. LaTeX maths is kept as written.
+ * font. Maths becomes real Word equations (editable in Word); TeX that
+ * can't be converted is kept as written.
  */
 
 const FONT = {
@@ -40,6 +48,29 @@ type InlineStyle = {
 };
 
 type Inline = TextRun | ExternalHyperlink;
+
+/** Only the tokenizer is used (with the maths extension). */
+const markdown = createMarkdown((tex) => tex);
+
+/**
+ * A Word equation for the TeX, or the TeX as text if it can't be converted.
+ * (docx's ParagraphChild type doesn't list imported XML; it works the same.)
+ */
+function equation(tex: string, displayMode: boolean, style: InlineStyle) {
+  const omml = texToOmml(tex, displayMode);
+  if (!omml) {
+    return run(displayMode ? tex : `$${tex}$`, { ...style, code: true });
+  }
+  // fromXmlString returns a nameless wrapper; the equation is its child.
+  const wrapper = ImportedXmlComponent.fromXmlString(omml) as unknown as {
+    root?: unknown[];
+  };
+  const element = wrapper.root?.[0];
+  if (!(element instanceof ImportedXmlComponent)) {
+    return run(displayMode ? tex : `$${tex}$`, { ...style, code: true });
+  }
+  return element as unknown as TextRun;
+}
 
 const HEADINGS = [
   HeadingLevel.HEADING_1,
@@ -83,6 +114,10 @@ function inlines(
   }
   return tokens.flatMap((token): Inline[] => {
     switch (token.type) {
+      case "inlineKatex": {
+        const math = token as MathToken;
+        return [equation(math.text, math.displayMode, style)];
+      }
       case "strong":
         return inlines(token.tokens, { ...style, bold: true });
       case "em":
@@ -131,6 +166,14 @@ function blocks(
 ): (Paragraph | Table)[] {
   return tokens.flatMap((token): (Paragraph | Table)[] => {
     switch (token.type) {
+      case "blockKatex":
+        return [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [equation((token as MathToken).text, true, {})],
+            spacing: { after: 160, before: 80 },
+          }),
+        ];
       case "heading":
         return [
           new Paragraph({
@@ -285,8 +328,8 @@ function table(token: Tokens.Table) {
   });
 }
 
-export function markdownToDocxDocument(title: string, markdown: string) {
-  const tokens = lexer(markdown);
+export function markdownToDocxDocument(title: string, source: string) {
+  const tokens = markdown.lexer(prepareMarkdown(source));
   const startsWithTitle =
     tokens[0]?.type === "heading" && (tokens[0] as Tokens.Heading).depth === 1;
   const children = [
@@ -339,6 +382,6 @@ export function markdownToDocxDocument(title: string, markdown: string) {
   });
 }
 
-export function markdownToDocx(title: string, markdown: string) {
-  return Packer.toBlob(markdownToDocxDocument(title, markdown));
+export function markdownToDocx(title: string, source: string) {
+  return Packer.toBlob(markdownToDocxDocument(title, source));
 }
