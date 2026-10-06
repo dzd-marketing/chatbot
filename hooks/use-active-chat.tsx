@@ -36,6 +36,7 @@ import {
   type ToolGroupId,
   type ToolSettings,
 } from "@/lib/ai/tool-groups";
+import { withStoppedReply } from "@/lib/chat/stopped";
 import type { Vote } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
 import type { ChatMessage } from "@/lib/types";
@@ -153,6 +154,10 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     reasoningLevelRef.current = reasoningLevel;
   }, [toolSettings, reasoningLevel]);
 
+  const setMessagesRef = useRef<
+    UseChatHelpers<ChatMessage>["setMessages"] | null
+  >(null);
+
   const { data: chatData, isLoading } = useSWR(
     isNewChat
       ? null
@@ -200,7 +205,14 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    onFinish: () => {
+    onFinish: ({ isAbort }) => {
+      // The Stop button marks the reply at once; mark it again after the
+      // stream's last update in case that update replaced it.
+      if (isAbort) {
+        setMessagesRef.current?.((current) =>
+          withStoppedReply(current, generateUUID)
+        );
+      }
       mutate(unstable_serialize(getChatHistoryPaginationKey));
     },
     sendAutomaticallyWhen: ({ messages: currentMessages }) => {
@@ -250,6 +262,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       },
     }),
   });
+  setMessagesRef.current = setMessages;
 
   useEffect(() => {
     if (status === "submitted" || status === "ready" || status === "error") {

@@ -49,14 +49,6 @@ function PureChatHeader({
           selectedVisibilityType={selectedVisibilityType}
         />
       )}
-
-      <span className="hidden items-center gap-1.5 text-[12px] text-muted-foreground md:ml-auto md:flex">
-        <span
-          aria-hidden="true"
-          className="size-1.5 rounded-full bg-brand ring-2 ring-brand/25"
-        />
-        DZD AI · Study assistant
-      </span>
     </header>
   );
 }

@@ -82,6 +82,8 @@ export type CustomUIDataTypes = {
   /** Follow-up suggestions shown under the latest assistant reply. */
   suggestions: string[];
   "dzd-activity": DzdActivityData;
+  /** The student stopped this reply (lib/chat/stopped.ts). */
+  stopped: null;
 };
 
 export type ChatMessage = UIMessage<

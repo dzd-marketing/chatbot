@@ -42,6 +42,7 @@ import { shareFiles } from "@/lib/ai/tools/share-files";
 import { createFlashcards, createQuiz } from "@/lib/ai/tools/study";
 import { updateDocument } from "@/lib/ai/tools/update-document";
 import { webFetch, webSearch } from "@/lib/ai/tools/web";
+import { markStopped } from "@/lib/chat/stopped";
 import { isProductionEnvironment, isTestEnvironment } from "@/lib/constants";
 import {
   createStreamId,
@@ -374,10 +375,14 @@ export async function POST(request: Request) {
             chunking: "word",
             delayInMs: 15,
           }),
+          // Stop generating when the student presses Stop (or leaves), so
+          // the partial reply is saved and no quota is wasted. With Redis
+          // resumable streams, replies keep going so they can be resumed.
+          ...((isDzd || !process.env.REDIS_URL) && {
+            abortSignal: request.signal,
+          }),
           instructions,
           ...(isDzd && {
-            // Stop the Space's work when the student stops or leaves.
-            abortSignal: request.signal,
             maxOutputTokens: getDzdMaxTokens(),
           }),
           messages: modelMessages,
@@ -480,7 +485,10 @@ export async function POST(request: Request) {
                   result.finishReason,
                   result.text,
                 ]);
-                if (finishReason !== "stop" && finishReason !== "length") {
+                if (
+                  request.signal.aborted ||
+                  (finishReason !== "stop" && finishReason !== "length")
+                ) {
                   return;
                 }
                 const lastUserMessage =
@@ -515,7 +523,16 @@ export async function POST(request: Request) {
         await Promise.all([dzdActivityTask, suggestionsTask]);
       },
       generateId: generateUUID,
-      onEnd: async ({ messages: finishedMessages }) => {
+      onEnd: async ({ messages: endedMessages, isAborted }) => {
+        // A stopped reply is saved as written so far, with a notice.
+        const finishedMessages = isAborted
+          ? endedMessages.map((endedMessage, index) =>
+              index === endedMessages.length - 1 &&
+              endedMessage.role === "assistant"
+                ? { ...endedMessage, parts: markStopped(endedMessage.parts) }
+                : endedMessage
+            )
+          : endedMessages;
         if (isToolApprovalFlow) {
           await Promise.all(
             finishedMessages.map(async (finishedMsg) => {

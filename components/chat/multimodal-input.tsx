@@ -45,11 +45,12 @@ import {
   DEFAULT_CHAT_MODEL,
   type ModelCapabilities,
 } from "@/lib/ai/models";
+import { withStoppedReply } from "@/lib/chat/stopped";
 import { prepareImageForUpload } from "@/lib/image-compress";
 import { isExternalUrl, PRIVACY_URL, TERMS_URL } from "@/lib/legal";
 import { featureMessage, type StudyFeature } from "@/lib/study-features";
 import type { Attachment, ChatMessage } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, generateUUID } from "@/lib/utils";
 import {
   PromptInput,
   PromptInputFooter,
@@ -61,7 +62,7 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { AnimatedPlaceholder } from "./animated-placeholder";
 import { ReasoningDropdown, ToolsDropdown } from "./composer-controls";
-import { DzdLogoMark, PaperclipIcon, StopIcon } from "./icons";
+import { DzdLogoMark, PaperclipIcon } from "./icons";
 import { PreviewAttachment } from "./preview-attachment";
 import {
   type SlashCommand,
@@ -671,7 +672,7 @@ function PureMultimodalInput({
             <ToolsDropdown />
           </PromptInputTools>
 
-          {status === "submitted" ? (
+          {status === "submitted" || status === "streaming" ? (
             <StopButton setMessages={setMessages} stop={stop} />
           ) : (
             <PromptInputSubmit
@@ -1085,6 +1086,10 @@ function PureModelSelectorCompact({
 
 const ModelSelectorCompact = memo(PureModelSelectorCompact);
 
+/**
+ * Shown while DZD AI is answering: a red stop square inside a spinning
+ * ring. Stopping keeps what was written and adds a "stopped" notice.
+ */
 function PureStopButton({
   stop,
   setMessages,
@@ -1096,19 +1101,46 @@ function PureStopButton({
     (event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
       stop();
-      setMessages((messages) => messages);
+      setMessages((messages) => withStoppedReply(messages, generateUUID));
     },
     [setMessages, stop]
   );
 
   return (
-    <Button
-      className="h-7 w-7 rounded-xl bg-foreground p-1 text-background transition-all duration-200 hover:opacity-85 active:scale-95 disabled:bg-muted disabled:text-muted-foreground/25 disabled:cursor-not-allowed"
+    <button
+      aria-label="Stop generating"
+      className="group relative grid size-8 shrink-0 cursor-pointer place-items-center rounded-full bg-red-500/10 text-red-500 transition-[background-color,transform] duration-200 hover:bg-red-500/18 active:scale-90 dark:bg-red-500/15 dark:hover:bg-red-500/25"
       data-testid="stop-button"
       onClick={handleClick}
+      title="Stop generating"
+      type="button"
     >
-      <StopIcon size={14} />
-    </Button>
+      <svg
+        aria-hidden="true"
+        className="absolute inset-0 size-full animate-spin [animation-duration:1.1s] motion-reduce:animate-none"
+        fill="none"
+        viewBox="0 0 32 32"
+      >
+        <circle
+          cx="16"
+          cy="16"
+          r="14"
+          stroke="currentColor"
+          strokeOpacity="0.2"
+          strokeWidth="2"
+        />
+        <circle
+          cx="16"
+          cy="16"
+          r="14"
+          stroke="currentColor"
+          strokeDasharray="24 64"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
+      </svg>
+      <span className="size-2.5 rounded-[3px] bg-current transition-transform duration-200 group-hover:scale-110" />
+    </button>
   );
 }
 

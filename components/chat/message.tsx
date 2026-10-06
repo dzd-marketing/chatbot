@@ -27,6 +27,7 @@ import { MessageActions } from "./message-actions";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Quiz, QuizSkeleton } from "./quiz";
+import { StoppedNotice } from "./stopped-notice";
 import { FeatureChip } from "./study-features";
 import { Weather } from "./weather";
 import {
@@ -137,7 +138,8 @@ const PurePreviewMessage = ({
         "text" in part &&
         part.text?.trim().length > 0) ||
       part.type.startsWith("tool-") ||
-      part.type === "data-dzd-activity"
+      part.type === "data-dzd-activity" ||
+      part.type === "data-stopped"
   );
   const isThinking = isAssistant && isLoading && !hasAnyContent;
 
@@ -252,6 +254,10 @@ const PurePreviewMessage = ({
         );
       }
       return null;
+    }
+
+    if (type === "data-stopped") {
+      return <StoppedNotice key={key} />;
     }
 
     if (type === "text") {

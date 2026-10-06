@@ -109,7 +109,7 @@ function ToolRow({
   return (
     <DropdownMenuPrimitive.CheckboxItem
       checked={checked}
-      className="group flex cursor-default select-none items-center gap-2.5 rounded-lg px-2.5 py-2 outline-hidden transition-colors duration-150 focus:bg-muted/70 data-disabled:cursor-not-allowed data-disabled:opacity-55"
+      className="group flex cursor-pointer select-none items-center gap-2.5 rounded-lg px-2.5 py-2 outline-hidden transition-colors duration-150 focus:bg-muted/70 data-disabled:cursor-not-allowed data-disabled:opacity-55"
       data-testid={`tool-${group.id}`}
       disabled={disabled}
       onCheckedChange={handleCheckedChange}
@@ -161,7 +161,7 @@ export function ToolsDropdown() {
           <button
             aria-disabled="true"
             aria-label="Tools are not available with this model"
-            className="inline-flex h-7 shrink-0 cursor-not-allowed items-center gap-1.5 rounded-full border border-border/40 px-2 text-[12px] font-medium text-muted-foreground opacity-50 sm:px-2.5"
+            className="inline-flex h-7 shrink-0 cursor-not-allowed items-center gap-1.5 rounded-full px-2 text-[12px] text-muted-foreground opacity-50"
             data-testid="tools-selector"
             type="button"
           >
@@ -192,10 +192,8 @@ export function ToolsDropdown() {
         <button
           aria-label={`Tools: ${summary}`}
           className={cn(
-            "group inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2 text-[12px] font-medium outline-hidden transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-brand/40 sm:px-2.5",
-            active
-              ? "border-brand/30 bg-brand/8 text-brand hover:border-brand/45"
-              : "border-border/40 text-muted-foreground hover:border-border hover:text-foreground"
+            // Same look as the other composer buttons (no highlight).
+            "group inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2 text-[12px] text-muted-foreground outline-hidden transition-colors duration-200 hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 data-[state=open]:bg-muted/70 data-[state=open]:text-foreground"
           )}
           data-state-active={active ? "on" : "off"}
           data-testid="tools-selector"
@@ -204,7 +202,7 @@ export function ToolsDropdown() {
           <WrenchIcon className="size-3.5" />
           <span className="hidden sm:inline">Tools</span>
           {!builtIn && enabledCount > 0 ? (
-            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-semibold text-brand-foreground tabular-nums">
+            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-foreground/10 px-1 font-medium text-[10px] text-foreground/75 tabular-nums">
               {enabledCount}
             </span>
           ) : null}
