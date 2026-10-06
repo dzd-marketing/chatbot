@@ -15,8 +15,8 @@ import { getDzdToken } from "@/lib/ai/dzd";
 
 export const maxDuration = 60;
 
-const DEFAULT_SPACE_URL =
-  "https://danuka21-quizontal-background-remover-c1.hf.space";
+/** The private voice Space (danuka21/ebackground-removal). */
+const DEFAULT_SPACE_URL = "https://danuka21-ebackground-removal.hf.space";
 const MAX_CHARS = 600;
 /** The Space must start sending audio within this time. */
 const FIRST_AUDIO_TIMEOUT_MS = 8000;
@@ -57,7 +57,18 @@ export async function GET() {
       signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
     });
     if (!response.ok) {
-      return Response.json({ ok: false }, { status: 503 });
+      // Why, for debugging (no secrets): a private Space answers 401/404
+      // when HF_READ_TOKEN is missing or can't read it.
+      let reason = "space-error";
+      if (response.status === 401 || response.status === 403) {
+        reason = "token-rejected";
+      } else if (response.status === 404) {
+        reason = getDzdToken() ? "not-found-or-no-access" : "missing-token";
+      }
+      return Response.json(
+        { ok: false, reason, status: response.status },
+        { status: 503 }
+      );
     }
     const health = (await response.json()) as {
       sample_rate?: number;
@@ -68,7 +79,8 @@ export async function GET() {
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch {
-    return Response.json({ ok: false }, { status: 503 });
+    // Usually the Space waking up from sleep (takes ~30 s).
+    return Response.json({ ok: false, reason: "timeout" }, { status: 503 });
   }
 }
 
