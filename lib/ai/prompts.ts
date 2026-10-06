@@ -1,5 +1,6 @@
 import type { Geo } from "@vercel/functions";
 import type { ArtifactKind } from "@/components/chat/artifact";
+import { renderVoiceSkills } from "./skills/voice";
 
 export const artifactsPrompt = `
 Artifacts is a side panel that displays content alongside the conversation. It supports scripts (code), documents (text), and spreadsheets. Changes appear in real-time.
@@ -363,27 +364,27 @@ export const systemPrompt = ({
 };
 
 const VOICE_LANGUAGE_RULES: Record<"en-IN" | "si-LK" | "ta-LK", string> = {
-  "en-IN": "Reply in English.",
+  "en-IN":
+    "Reply in English: simple, friendly, everyday English that Sri Lankan students use.",
   "si-LK":
-    "Reply in Sinhala, written in Sinhala script (not romanised), the way people naturally speak it in Sri Lanka. English technical terms are fine where Sinhala speakers would use them.",
+    "Reply in Sinhala, written in Sinhala script (not romanised), the casual way friends actually talk in Sri Lanka (කතා කරන සිංහල), not formal written Sinhala. English technical terms are fine where Sinhala speakers would use them. The examples in the skills are in English; use the same friendly style in Sinhala.",
   "ta-LK":
-    "Reply in Tamil, written in Tamil script (not romanised), the way Sri Lankan Tamil speakers naturally speak. English technical terms are fine where Tamil speakers would use them.",
+    "Reply in Tamil, written in Tamil script (not romanised), the casual way Sri Lankan Tamil friends actually talk, not formal written Tamil. English technical terms are fine where Tamil speakers would use them. The examples in the skills are in English; use the same friendly style in Tamil.",
 };
 
 /**
  * Added to the system prompt in a voice conversation: every reply is read
- * aloud by a text-to-speech voice, so it has to sound like speech.
+ * aloud by a text-to-speech voice, so it has to sound like a friend talking
+ * on a call. The speaking skills (lib/ai/skills/voice) hold the details.
  */
 export const voicePrompt = (language: "en-IN" | "si-LK" | "ta-LK") => `\
-You are in a live VOICE call with the student. Your reply is read aloud by a text-to-speech voice, and their words come from speech recognition. Answer straight away.
-- Keep it SHORT, like a person talking on a call: one or two short sentences, under 35 words. Summarise: give only the main idea or the direct answer, never a full explanation, background or a list of points.
-- Only if the student clearly asks for more detail or steps, use up to four short sentences (under 70 words). If a topic needs more than that, give the gist and offer to go deeper ("Want me to go through it step by step?").
-- Plain spoken sentences only: no markdown, headings, bullet or numbered lists, tables, code, emoji, links or URLs.
-- Say maths and symbols in words (for example "x squared plus two x equals eight", "three point one four"). Never write LaTeX or formulas.
-- Answer from what you know. Only search the web when the question needs current or very specific facts, and then say what you found in one sentence, without sources or addresses.
-- The recognised text may contain mistakes or missing punctuation. Work out what they most likely meant; if it's truly unclear, ask a short question.
-- You may end with a short question that keeps the conversation going, but not every time.
-- ${VOICE_LANGUAGE_RULES[language]}`;
+# Voice call mode
+You are in a live VOICE call with the student. Your reply is read aloud by a text-to-speech voice, and their words come from speech recognition (so they may contain mistakes or missing punctuation; work out what they most likely meant). These speaking skills override any formatting, length or tone rules above. Answer straight away.
+
+${renderVoiceSkills()}
+
+## Language
+${VOICE_LANGUAGE_RULES[language]}`;
 
 export const codePrompt = `
 You are a code generator that creates self-contained, executable code snippets. When writing code:

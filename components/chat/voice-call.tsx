@@ -26,6 +26,7 @@ import {
   BACKCHANNELS,
   type BackchannelKind,
   type CallLanguage,
+  pickFor,
   spokenPart,
   toSpeakable,
 } from "@/lib/voice-speech";
@@ -46,14 +47,49 @@ const QUEUE_WAIT_MS = 2500;
 
 /** Said when a reply only has things to look at (a chart, a document…). */
 const IN_CHAT: Record<CallLanguage, string> = {
-  "en-IN": "I've put that in the chat for you.",
+  "en-IN": "I've popped that into the chat for you, have a look.",
   "si-LK": "මම ඒක chat එකේ දැම්මා.",
   "ta-LK": "அதை chat-இல் போட்டிருக்கிறேன்.",
 };
 const FAILED: Record<CallLanguage, string> = {
-  "en-IN": "Sorry, I couldn't answer that. Please try again.",
+  "en-IN": "Oops, something went wrong on my side. Can you ask me that again?",
   "si-LK": "සමාවෙන්න, ඒකට උත්තර දෙන්න බැරි වුණා. ආයෙත් උත්සාහ කරන්න.",
   "ta-LK": "மன்னிக்கவும், பதில் சொல்ல முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
+};
+
+/**
+ * Said when the assistant goes to search the web without saying so first,
+ * so the student isn't left in silence.
+ */
+const HOLD_ON: Record<CallLanguage, readonly string[]> = {
+  "en-IN": [
+    "Give me a few seconds, I'll quickly check that online.",
+    "Hang on, let me look that up for you.",
+    "One sec, I'm checking the internet for that.",
+    "Ooh, let me find the latest on that. Just a moment.",
+  ],
+  "si-LK": [
+    "පොඩ්ඩක් ඉන්න, මම ඒක online බලලා කියන්නම්.",
+    "තත්පර කීපයක් දෙන්න, මම හොයලා බලන්නම්.",
+  ],
+  "ta-LK": [
+    "கொஞ்சம் இருங்க, நான் online-ல பார்த்து சொல்றேன்.",
+    "ஒரு நிமிஷம், நான் தேடி பார்க்கிறேன்.",
+  ],
+};
+const SEARCH_TOOLS = new Set(["tool-webSearch", "tool-webFetch"]);
+
+/** The reply went to search the web before saying anything. */
+const searchedFirst = (message: ChatMessage) => {
+  for (const part of message.parts) {
+    if (part.type === "text" && toSpeakable(part.text)) {
+      return false;
+    }
+    if (SEARCH_TOOLS.has(part.type)) {
+      return true;
+    }
+  }
+  return false;
 };
 
 const replyText = (message: ChatMessage) =>
@@ -298,6 +334,10 @@ export function VoiceCall({
     let full = replyText(answer);
     if (settled && !full) {
       full = status === "error" ? FAILED[lang] : IN_CHAT[lang];
+    }
+    if (searchedFirst(answer)) {
+      // Stays at the start, so the spoken text only grows.
+      full = `${pickFor(HOLD_ON[lang], answer.id)} ${full}`.trim();
     }
     // Long replies are cut short in speech; the chat keeps all of it, and
     // the call moves on without waiting for the rest to be written.

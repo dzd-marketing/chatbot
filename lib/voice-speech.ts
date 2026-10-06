@@ -126,6 +126,12 @@ export function toSpeakable(markdown: string) {
 
 /** Sentence ends: . ! ? … plus the Sinhala/Tamil full stop "।" when used. */
 const SENTENCE_END = /[.!?…।]+["'”’)\]]*(?=\s|$)/g;
+/**
+ * A full stop that may not end the sentence yet while the reply streams:
+ * "3." (maybe "3.14"), "Mr.", "e.g.".
+ */
+const MAYBE_UNFINISHED =
+  /(?:\d|\b(?:Mr|Mrs|Ms|Dr|St|No|vs|etc|approx|e\.g|i\.e))\.$/i;
 /** Long sentences are also cut at a comma so the voice starts sooner. */
 const SOFT_LIMIT = 220;
 
@@ -139,7 +145,9 @@ export function splitSentences(text: string, complete: boolean) {
   for (const match of text.matchAll(SENTENCE_END)) {
     const end = (match.index ?? 0) + match[0].length;
     // Still streaming: "3." may be the start of "3.14", wait for more.
-    if (!complete && end === text.length) {
+    // Other sentence ends are spoken at once, e.g. "Give me a sec, I'll
+    // check online." while the search runs.
+    if (!complete && end === text.length && MAYBE_UNFINISHED.test(text)) {
       break;
     }
     pushSentence(sentences, text.slice(start, end));
@@ -169,18 +177,50 @@ function pushSentence(sentences: string[], raw: string) {
 
 /* ------------------------------------------------------- spoken length */
 
-/** How much of a reply is spoken before the rest is left to the chat. */
-const SPOKEN_WORD_LIMIT = 40;
-const SPOKEN_SENTENCE_LIMIT = 3;
+/**
+ * How much of a reply is spoken before the rest is left to the chat. Voice
+ * replies are written short (see the speaking skills), so this only cuts
+ * replies that ran long; short sentences don't count against it much.
+ */
+const SPOKEN_WORD_LIMIT = 50;
+const SPOKEN_SENTENCE_LIMIT = 5;
+/** A closing question ("Want me to go on?") may go a little over. */
+const QUESTION_GRACE_WORDS = 15;
 
 const countWords = (text: string) => text.split(/\s+/).filter(Boolean).length;
 
-/** Said when a long reply is cut short in speech (the chat has more). */
-export const MORE_IN_CHAT: Record<CallLanguage, string> = {
-  "en-IN": "There's more detail in the chat.",
-  "si-LK": "තව විස්තර chat එකේ තියෙනවා.",
-  "ta-LK": "மேலும் விவரங்கள் chat-இல் உள்ளன.",
+/**
+ * Said when a long reply is cut short in speech (the chat has more):
+ * friendly and varied, like a friend would say it.
+ */
+export const MORE_IN_CHAT: Record<CallLanguage, readonly string[]> = {
+  "en-IN": [
+    "I've put the rest in the chat, so have a look when you're ready.",
+    "There's a bit more in the chat if you want it.",
+    "That's the main idea. The full thing is in the chat for you.",
+    "I'll stop there. Check the chat if you want the rest, okay?",
+    "The rest is waiting in the chat whenever you need it.",
+  ],
+  "si-LK": [
+    "ඉතුරු ටික මම chat එකේ දැම්මා, බලන්නකෝ.",
+    "තව ටිකක් chat එකේ තියෙනවා, ඕන නම් බලන්න.",
+    "ප්‍රධාන අදහස ඒක තමයි. සම්පූර්ණ එක chat එකේ තියෙනවා.",
+  ],
+  "ta-LK": [
+    "மீதியை chat-இல் போட்டிருக்கேன், பாருங்க.",
+    "இன்னும் கொஞ்சம் chat-இல் இருக்கு, வேணும்னா பாருங்க.",
+    "முக்கியமான விஷயம் இதுதான். முழுசா chat-இல் இருக்கு.",
+  ],
 };
+
+/** The same pick for the same reply, so it doesn't change as it streams. */
+export function pickFor<T>(options: readonly T[], seed: string): T {
+  let hash = 0;
+  for (const char of seed) {
+    hash = (hash * 31 + (char.codePointAt(0) ?? 0)) % 1_000_003;
+  }
+  return options[hash % options.length];
+}
 
 /**
  * What is spoken of a reply: whole sentences up to about 40 words and three
@@ -201,14 +241,21 @@ export function spokenPart(
   for (const [index, sentence] of sentences.entries()) {
     const at = text.indexOf(sentence, searchFrom);
     const sentenceWords = countWords(sentence);
+    // Usually the reply's last sentence (it may still be streaming).
+    const closingQuestion =
+      sentence.endsWith("?") &&
+      sentenceWords <= QUESTION_GRACE_WORDS &&
+      words + sentenceWords <= SPOKEN_WORD_LIMIT + QUESTION_GRACE_WORDS;
     if (
       index > 0 &&
+      !closingQuestion &&
       (words + sentenceWords > SPOKEN_WORD_LIMIT ||
         index >= SPOKEN_SENTENCE_LIMIT)
     ) {
+      const spoken = text.slice(0, end).trim();
       return {
         capped: true,
-        text: `${text.slice(0, end).trim()} ${MORE_IN_CHAT[lang]}`,
+        text: `${spoken} ${pickFor(MORE_IN_CHAT[lang], spoken)}`,
       };
     }
     words += sentenceWords;

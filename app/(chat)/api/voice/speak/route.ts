@@ -1,5 +1,6 @@
 import { auth } from "@/app/(auth)/auth";
 import { getDzdToken } from "@/lib/ai/dzd";
+import { forSpeech } from "@/lib/voice-pronounce";
 
 /**
  * The DZD voice for voice conversations: forwards a sentence to the voice
@@ -97,7 +98,9 @@ export async function POST(request: Request) {
   } catch {
     // Handled below.
   }
-  text = text.replace(/\s+/g, " ").trim().slice(0, MAX_CHARS);
+  // Said in plain words: the voice skips or garbles digits, symbols and
+  // acronyms ("A/L" -> "A Level", "45%" -> "forty-five percent").
+  text = forSpeech(text.replace(/\s+/g, " ").trim()).slice(0, MAX_CHARS);
   if (!/[\p{L}\p{N}]/u.test(text)) {
     return Response.json({ error: "no text" }, { status: 400 });
   }

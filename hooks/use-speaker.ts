@@ -9,6 +9,7 @@ import {
   SpeechJob,
   unlockAudio,
 } from "@/lib/voice-audio";
+import { forSpeech } from "@/lib/voice-pronounce";
 import {
   BACKCHANNELS,
   type CallLanguage,
@@ -556,7 +557,11 @@ export function useSpeaker(lang: CallLanguage) {
       timersRef.current.push(setTimeout(next, expectedMs + 250));
       return;
     }
-    const utterance = new SpeechSynthesisUtterance(sentence.text);
+    // English in plain words (A/L -> A Level); word positions then no
+    // longer match the transcript, so it follows along by time instead.
+    const said =
+      langRef.current === DZD_LANG ? forSpeech(sentence.text) : sentence.text;
+    const utterance = new SpeechSynthesisUtterance(said);
     utterance.voice = voiceNow;
     utterance.lang = voiceNow.lang;
     utterance.rate = RATE;
@@ -567,7 +572,11 @@ export function useSpeaker(lang: CallLanguage) {
       }
     };
     utterance.onboundary = (event) => {
-      if (token !== tokenRef.current || event.name !== "word") {
+      if (
+        token !== tokenRef.current ||
+        event.name !== "word" ||
+        said !== sentence.text
+      ) {
         return;
       }
       heardWord = true;
