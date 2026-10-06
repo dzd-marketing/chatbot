@@ -31,9 +31,38 @@ export type SpeechProgress = {
 
 type Sentence = { text: string; start: number };
 
-/** Typical speaking pace, used when the voice doesn't report words. */
-const CHARS_PER_SECOND = 14.5;
+/**
+ * Typical speaking pace (in "timing units": one per character, plus a bit
+ * for the pause at each comma or full stop), used when the voice doesn't
+ * report its words. It is re-measured from every sentence the voice says.
+ */
+const DEFAULT_PACE: Record<CallLanguage, number> = {
+  "en-IN": 15,
+  "si-LK": 12,
+  "ta-LK": 12,
+};
 const RATE = 1;
+
+/** Timing units for each character of a sentence, added up. */
+function timingUnits(text: string) {
+  const units: number[] = [];
+  let total = 0;
+  for (const char of text) {
+    if (/[,;:]/.test(char)) {
+      total += 4;
+    } else if (/[.!?…।]/.test(char)) {
+      total += 6;
+    } else {
+      total += 1;
+    }
+    // One entry per UTF-16 unit, so offsets match string indexes.
+    units.push(total);
+    if (char.length > 1) {
+      units.push(total);
+    }
+  }
+  return units;
+}
 
 const hasSynthesis = () =>
   typeof window !== "undefined" && "speechSynthesis" in window;
@@ -67,6 +96,10 @@ export function useSpeaker(lang: CallLanguage) {
   const onDoneRef = useRef<(() => void) | null>(null);
   // Keeps utterances alive: Chrome drops events of collected ones.
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  /** Measured speaking pace per voice (timing units per second). */
+  const paceRef = useRef(new Map<string, number>());
+  const langRef = useRef(lang);
+  langRef.current = lang;
 
   // The device's voices load asynchronously (and change on Chrome).
   useEffect(() => {
@@ -158,7 +191,15 @@ export function useSpeaker(lang: CallLanguage) {
       sentence.start,
       turn.text.lastIndexOf(" ", sentenceEnd - 1) + 1
     );
-    const startedAt = performance.now();
+    const units = timingUnits(sentence.text);
+    const totalUnits = units.at(-1) ?? 1;
+    const synth = hasSynthesis() ? window.speechSynthesis : null;
+    const voiceNow = voiceRef.current;
+    const paceKey = voiceNow ? voiceNow.voiceURI || voiceNow.name : "";
+    const pace = () =>
+      (paceRef.current.get(paceKey) ?? DEFAULT_PACE[langRef.current]) * RATE;
+    // Until the audio really starts (network voices take a moment).
+    let startedAt = performance.now();
     let heardWord = false;
 
     const show = (offset: number) => {
@@ -182,22 +223,24 @@ export function useSpeaker(lang: CallLanguage) {
     };
 
     show(sentence.start);
-    // Follow along by time until (unless) the voice reports words.
+    // Follow along by time until (unless) the voice reports its words.
     tickRef.current = setInterval(() => {
       if (token !== tokenRef.current || heardWord) {
         return;
       }
       const elapsed = (performance.now() - startedAt) / 1000;
-      const estimate = sentence.start + elapsed * CHARS_PER_SECOND * RATE;
+      const reached = elapsed * pace();
+      let index = units.findIndex((unit) => unit >= reached);
+      if (index === -1) {
+        index = sentence.text.length - 1;
+      }
       // Stay on the word the estimate is in (at most the last word).
-      const before = turn.text.lastIndexOf(" ", estimate) + 1;
-      show(Math.min(before, lastWordStart));
-    }, 90);
+      const offset = sentence.start + index;
+      const before = turn.text.lastIndexOf(" ", offset) + 1;
+      show(Math.min(Math.max(before, sentence.start), lastWordStart));
+    }, 80);
 
-    const expectedMs =
-      (sentence.text.length / (CHARS_PER_SECOND * RATE)) * 1000;
-    const synth = hasSynthesis() ? window.speechSynthesis : null;
-    const voiceNow = voiceRef.current;
+    const expectedMs = (totalUnits / pace()) * 1000;
     if (!(synth && voiceNow)) {
       // No voice: "read" at speaking pace.
       timersRef.current.push(setTimeout(next, expectedMs + 250));
@@ -208,6 +251,11 @@ export function useSpeaker(lang: CallLanguage) {
     utterance.lang = voiceNow.lang;
     utterance.rate = RATE;
     utterance.pitch = 1;
+    utterance.onstart = () => {
+      if (token === tokenRef.current) {
+        startedAt = performance.now();
+      }
+    };
     utterance.onboundary = (event) => {
       if (token !== tokenRef.current || event.name !== "word") {
         return;
@@ -215,7 +263,21 @@ export function useSpeaker(lang: CallLanguage) {
       heardWord = true;
       show(sentence.start + event.charIndex);
     };
-    utterance.onend = next;
+    utterance.onend = () => {
+      if (token === tokenRef.current) {
+        // Learn this voice's real pace for the next sentence.
+        const seconds = (performance.now() - startedAt) / 1000;
+        if (seconds > 0.4 && totalUnits > 8) {
+          const measured = totalUnits / seconds / RATE;
+          const previous = paceRef.current.get(paceKey) ?? measured;
+          paceRef.current.set(
+            paceKey,
+            Math.min(30, Math.max(6, previous * 0.4 + measured * 0.6))
+          );
+        }
+      }
+      next();
+    };
     utterance.onerror = next;
     utteranceRef.current = utterance;
     synth.speak(utterance);
@@ -249,13 +311,10 @@ export function useSpeaker(lang: CallLanguage) {
       if (onDone) {
         onDoneRef.current = onDone;
       }
-      const sentences = splitSentences(text, complete);
-      // Keep sentences already queued; add the new ones with their offsets.
-      let searchFrom = turn.sentences.at(-1)
-        ? (turn.sentences.at(-1) as Sentence).start +
-          (turn.sentences.at(-1) as Sentence).text.length
-        : 0;
-      for (const sentence of sentences.slice(turn.sentences.length)) {
+      // Sentences already queued stay; the text after them is split anew.
+      const last = turn.sentences.at(-1);
+      let searchFrom = last ? last.start + last.text.length : 0;
+      for (const sentence of splitSentences(text.slice(searchFrom), complete)) {
         const start = text.indexOf(sentence, searchFrom);
         const at = start === -1 ? searchFrom : start;
         turn.sentences.push({ start: at, text: sentence });
@@ -293,8 +352,9 @@ export function useSpeaker(lang: CallLanguage) {
     const utterance = new SpeechSynthesisUtterance(phrase);
     utterance.voice = voiceNow;
     utterance.lang = voiceNow.lang;
-    utterance.rate = 1.05;
-    utterance.volume = 0.55;
+    // Softer and a touch quicker than speech, like a murmur.
+    utterance.rate = 1.08;
+    utterance.volume = 0.6;
     window.speechSynthesis.speak(utterance);
     return true;
   }, []);

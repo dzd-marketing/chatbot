@@ -23,7 +23,9 @@ import type { ChatMessage } from "@/lib/types";
 import { cn, generateUUID } from "@/lib/utils";
 import {
   BACKCHANNELS,
+  type BackchannelKind,
   type CallLanguage,
+  spokenPart,
   toSpeakable,
 } from "@/lib/voice-speech";
 import { VoiceLanguageMenu } from "./voice-input";
@@ -38,6 +40,8 @@ import { VoiceLanguageMenu } from "./voice-input";
  */
 
 const EASE = [0.32, 0.72, 0, 1] as const;
+/** How long a new turn waits for the last (long) reply to finish. */
+const QUEUE_WAIT_MS = 2500;
 
 /** Said when a reply only has things to look at (a chart, a document…). */
 const IN_CHAT: Record<CallLanguage, string> = {
@@ -136,16 +140,16 @@ export function VoiceCall({
     unlock,
   } = useSpeaker(lang);
 
-  const handleTurn = useCallback(
-    (text: string) => {
-      if (!openRef.current) {
-        return;
-      }
-      const id = generateUUID();
+  const statusRef = useRef(status);
+  statusRef.current = status;
+  /** A turn said while the last (long) reply is still being written. */
+  const queuedRef = useRef<{ id: string; text: string; at: number } | null>(
+    null
+  );
+
+  const send = useCallback(
+    (id: string, text: string) => {
       pendingRef.current = { userMessageId: id };
-      setHistory((turns) => [...turns, { id, role: "user", text }]);
-      setReply(null);
-      setPhase("thinking");
       window.history.pushState(
         {},
         "",
@@ -159,20 +163,68 @@ export function VoiceCall({
     [chatId, lang, sendMessage]
   );
 
-  const handleBackchannel = useCallback(() => {
-    if (hasVoice !== true) {
-      return false;
+  const handleTurn = useCallback(
+    (text: string) => {
+      if (!openRef.current) {
+        return;
+      }
+      const id = generateUUID();
+      setHistory((turns) => [...turns, { id, role: "user", text }]);
+      setReply(null);
+      setPhase("thinking");
+      const busy =
+        statusRef.current === "submitted" || statusRef.current === "streaming";
+      if (busy) {
+        // Sent as soon as the chat has finished writing the last reply.
+        queuedRef.current = { at: Date.now(), id, text };
+        return;
+      }
+      send(id, text);
+    },
+    [send]
+  );
+
+  // Send the turn that was waiting once the last reply is written. A long
+  // reply gets a moment to finish, then stops (the chat keeps what it has)
+  // so the student isn't kept waiting.
+  useEffect(() => {
+    const queued = queuedRef.current;
+    if (!(queued && open)) {
+      return;
     }
-    const options = BACKCHANNELS[lang].filter(
-      (option) => option !== lastBackchannelRef.current
-    );
-    const phrase = options[Math.floor(Math.random() * options.length)];
-    if (!phrase) {
-      return false;
+    if (status === "submitted" || status === "streaming") {
+      const left = QUEUE_WAIT_MS - (Date.now() - queued.at);
+      const timer = setTimeout(
+        () => {
+          if (queuedRef.current) {
+            stop();
+          }
+        },
+        Math.max(0, left)
+      );
+      return () => clearTimeout(timer);
     }
-    lastBackchannelRef.current = phrase;
-    return backchannel(phrase);
-  }, [backchannel, hasVoice, lang]);
+    queuedRef.current = null;
+    send(queued.id, queued.text);
+  }, [open, send, status, stop]);
+
+  const handleBackchannel = useCallback(
+    (kind: BackchannelKind) => {
+      if (hasVoice !== true) {
+        return null;
+      }
+      const options = BACKCHANNELS[lang][kind].filter(
+        (option) => option !== lastBackchannelRef.current
+      );
+      const phrase = options[Math.floor(Math.random() * options.length)];
+      if (!(phrase && backchannel(phrase))) {
+        return null;
+      }
+      lastBackchannelRef.current = phrase;
+      return phrase;
+    },
+    [backchannel, hasVoice, lang]
+  );
 
   const handleListenError = useCallback((message: string) => {
     setError(message);
@@ -224,7 +276,7 @@ export function VoiceCall({
       return;
     }
     const settled = status === "ready" || status === "error";
-    const index = messages.findIndex(
+    const index = messages.findLastIndex(
       (message) => message.id === pending.userMessageId
     );
     const answer =
@@ -242,12 +294,15 @@ export function VoiceCall({
       }
       return;
     }
-    let text = replyText(answer);
-    if (settled && !text) {
-      text = status === "error" ? FAILED[lang] : IN_CHAT[lang];
+    let full = replyText(answer);
+    if (settled && !full) {
+      full = status === "error" ? FAILED[lang] : IN_CHAT[lang];
     }
+    // Long replies are cut short in speech; the chat keeps all of it, and
+    // the call moves on without waiting for the rest to be written.
+    const { capped, text } = spokenPart(full, settled, lang);
     setReply({ id: answer.id, text });
-    feed(answer.id, text, settled, () =>
+    feed(answer.id, text, settled || capped, () =>
       finishReply({ id: answer.id, role: "assistant", text })
     );
   }, [feed, finishReply, lang, messages, open, status]);
@@ -291,6 +346,7 @@ export function VoiceCall({
   const end = useCallback(() => {
     openRef.current = false;
     pendingRef.current = null;
+    queuedRef.current = null;
     if (connectTimerRef.current) {
       clearTimeout(connectTimerRef.current);
     }
@@ -301,6 +357,12 @@ export function VoiceCall({
   }, [cancelSpeech, stopListening]);
 
   const interrupt = useCallback(() => {
+    if (queuedRef.current) {
+      // Waiting to send: take the turn back and listen again.
+      queuedRef.current = null;
+      listen();
+      return;
+    }
     if (!pendingRef.current) {
       return;
     }
@@ -321,7 +383,7 @@ export function VoiceCall({
     if (status === "submitted" || status === "streaming") {
       stop();
     }
-  }, [cancelSpeech, finishReply, progress, reply, status, stop]);
+  }, [cancelSpeech, finishReply, listen, progress, reply, status, stop]);
 
   const toggleMute = useCallback(() => {
     if (mutedRef.current) {

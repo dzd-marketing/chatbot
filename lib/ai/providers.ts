@@ -23,7 +23,7 @@ export const myProvider = isTestEnvironment
  */
 export function getLanguageModel(
   _modelId: string,
-  options: Partial<Omit<RouterOptions, "purpose">> = {}
+  options: Partial<RouterOptions> = {}
 ) {
   if (isTestEnvironment && myProvider) {
     return myProvider.languageModel("chat-model");

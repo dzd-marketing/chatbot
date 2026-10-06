@@ -71,6 +71,11 @@ const FIRST_OUTPUT_MS = {
   primary: 30_000,
   standard: 20_000,
 } as const;
+/** Voice conversations: someone is waiting on the line, move on sooner. */
+const VOICE_FIRST_OUTPUT_MS = {
+  primary: 12_000,
+  standard: 10_000,
+} as const;
 
 /** Don't start another model with less time than this left. */
 const MIN_ATTEMPT_MS = 8000;
@@ -172,11 +177,13 @@ async function nvidiaCatalog() {
   }
 }
 
-export type RoutePurpose = "chat" | "fast";
+export type RoutePurpose = "chat" | "fast" | "voice";
 
 /**
  * The models to try, in order. `fast` is for short helper calls (chat
  * titles, follow-up suggestions): the quick model first and no CPU model.
+ * `voice` (voice conversations) also puts the quick model first, but keeps
+ * every fallback.
  * With images, models that can see them go first; the others get a note
  * instead of the image.
  */
@@ -197,7 +204,7 @@ export async function buildRoutePlan({
     // loaded, the two named models are still tried.
     const listed = (id: string) => catalog.length === 0 || catalog.includes(id);
     const named = (
-      purpose === "fast"
+      purpose === "fast" || purpose === "voice"
         ? [SECONDARY_NVIDIA_MODEL, PRIMARY_NVIDIA_MODEL]
         : [PRIMARY_NVIDIA_MODEL, SECONDARY_NVIDIA_MODEL]
     ).filter(listed);
@@ -230,7 +237,7 @@ export async function buildRoutePlan({
     });
   }
 
-  if (purpose === "chat" && getDzdToken()) {
+  if (purpose !== "fast" && getDzdToken()) {
     plan.push({
       create: () => createDzdModel(dzdHooks),
       id: "dzd:hf-space",
@@ -761,7 +768,10 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
         const firstOutputMs =
           candidate.tier === "dzd"
             ? Math.max(left, MIN_ATTEMPT_MS)
-            : (options.firstOutputMs ?? FIRST_OUTPUT_MS)[
+            : (options.firstOutputMs ??
+                (options.purpose === "voice"
+                  ? VOICE_FIRST_OUTPUT_MS
+                  : FIRST_OUTPUT_MS))[
                 candidate.tier === "primary" ? "primary" : "standard"
               ];
         const timeoutMs = options.firstOutputMs

@@ -25,6 +25,7 @@ import {
 import {
   type ComponentProps,
   type ReactNode,
+  useCallback,
   useEffect,
   useRef,
 } from "react";
@@ -231,15 +232,29 @@ export function VoiceConversation({
       return;
     }
     const word = box.querySelector<HTMLElement>("[data-current-word]");
-    if (word) {
-      const top = word.offsetTop - box.offsetTop;
-      if (top < box.scrollTop || top + word.offsetHeight > box.scrollTop + box.clientHeight) {
-        box.scrollTo({ behavior: "smooth", top: top - box.clientHeight / 2 });
-      }
+    if (!word) {
+      box.scrollTo({ behavior: "smooth", top: box.scrollHeight });
       return;
     }
-    box.scrollTo({ behavior: "smooth", top: box.scrollHeight });
+    // Keep the line being said about a third of the way down, moving on
+    // smoothly line by line as the voice reaches it.
+    const lineTop =
+      word.getBoundingClientRect().top -
+      box.getBoundingClientRect().top +
+      box.scrollTop;
+    const target = Math.max(0, lineTop - box.clientHeight * 0.35);
+    if (Math.abs(target - box.scrollTop) > 4) {
+      box.scrollTo({ behavior: "smooth", top: target });
+    }
   }, [scrollKey]);
+
+  // Older lines fade out at the top once the transcript has scrolled.
+  const handleTranscriptScroll = useCallback(() => {
+    const box = transcriptRef.current;
+    if (box) {
+      box.dataset.scrolled = String(box.scrollTop > 2);
+    }
+  }, []);
 
   let hintText = hint ?? HINT[mode];
   if (muted) {
@@ -317,8 +332,9 @@ export function VoiceConversation({
 
       <div
         aria-live="polite"
-        className="flex max-h-40 min-h-[4.5rem] w-full flex-col gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex max-h-44 min-h-[4.5rem] w-full flex-col gap-1.5 overflow-y-auto [scrollbar-width:none] data-[scrolled=true]:[mask-image:linear-gradient(to_bottom,transparent,black_28px)] [&::-webkit-scrollbar]:hidden"
         data-testid="voice-transcript"
+        onScroll={handleTranscriptScroll}
         ref={transcriptRef}
       >
         {transcript.map((turn) => (

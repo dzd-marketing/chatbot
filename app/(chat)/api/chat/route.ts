@@ -224,10 +224,14 @@ export async function POST(request: Request) {
     const toolSettings = resolveToolSettings({
       webSearch: webSearchRequested,
       ...requestedTools,
-      ...(voice ? { documents: false, study: false } : {}),
+      // Reading whole web pages is too slow for a spoken answer.
+      ...(voice ? { documents: false, study: false, webFetch: false } : {}),
     });
     // Fast (thinking off) or Thinking.
-    const reasoningLevel = resolveReasoningLevel(modelConfig, reasoning);
+    // Voice conversations always answer fast (someone is waiting).
+    const reasoningLevel = voice
+      ? "off"
+      : resolveReasoningLevel(modelConfig, reasoning);
 
     // Uploaded PDF / Word / text files become text the model can read.
     // Voice messages: the model reads the transcript, not the audio.
@@ -360,9 +364,12 @@ export async function POST(request: Request) {
           activeTools: enabledTools,
           // Release text word by word at a steady pace, so the client's
           // word blur-in animation follows reading rhythm instead of bursts.
-          experimental_transform: smoothStream({
-            chunking: "word",
-            delayInMs: 15,
+          // Voice replies are spoken, not animated: no pacing delay.
+          ...(!voice && {
+            experimental_transform: smoothStream({
+              chunking: "word",
+              delayInMs: 15,
+            }),
           }),
           // Stop generating when the student presses Stop (or leaves), so
           // the partial reply is saved and no quota is wasted. With Redis
@@ -388,6 +395,8 @@ export async function POST(request: Request) {
                   : "Still working on it..."
               );
             },
+            // Voice: the quick model first, and less waiting on slow ones.
+            purpose: voice ? "voice" : "chat",
             reasoningLevel,
           }),
           onAbort() {
@@ -484,38 +493,40 @@ export async function POST(request: Request) {
 
         // Follow-up suggestions: generated once the answer is complete and
         // written as a persisted data part on the same assistant message.
-        const suggestionsTask = isTestEnvironment
-          ? Promise.resolve()
-          : (async () => {
-              try {
-                const [finishReason, answer] = await Promise.all([
-                  result.finishReason,
-                  result.text,
-                ]);
-                if (
-                  request.signal.aborted ||
-                  (finishReason !== "stop" && finishReason !== "length")
-                ) {
-                  return;
-                }
-                const lastUserMessage =
-                  message ?? uiMessages.findLast((m) => m.role === "user");
-                const suggestions = await generateFollowUpSuggestions({
-                  answer,
-                  question: lastUserMessage
-                    ? getTextFromMessage(lastUserMessage)
-                    : "",
-                });
-                if (suggestions.length > 0) {
-                  dataStream.write({
-                    data: suggestions,
-                    type: "data-suggestions",
+        // Not in voice conversations: the call waits for the reply to end.
+        const suggestionsTask =
+          isTestEnvironment || voice
+            ? Promise.resolve()
+            : (async () => {
+                try {
+                  const [finishReason, answer] = await Promise.all([
+                    result.finishReason,
+                    result.text,
+                  ]);
+                  if (
+                    request.signal.aborted ||
+                    (finishReason !== "stop" && finishReason !== "length")
+                  ) {
+                    return;
+                  }
+                  const lastUserMessage =
+                    message ?? uiMessages.findLast((m) => m.role === "user");
+                  const suggestions = await generateFollowUpSuggestions({
+                    answer,
+                    question: lastUserMessage
+                      ? getTextFromMessage(lastUserMessage)
+                      : "",
                   });
+                  if (suggestions.length > 0) {
+                    dataStream.write({
+                      data: suggestions,
+                      type: "data-suggestions",
+                    });
+                  }
+                } catch {
+                  /* suggestions are optional */
                 }
-              } catch {
-                /* suggestions are optional */
-              }
-            })();
+              })();
 
         if (titlePromise) {
           try {

@@ -138,6 +138,10 @@ export function splitSentences(text: string, complete: boolean) {
   let start = 0;
   for (const match of text.matchAll(SENTENCE_END)) {
     const end = (match.index ?? 0) + match[0].length;
+    // Still streaming: "3." may be the start of "3.14", wait for more.
+    if (!complete && end === text.length) {
+      break;
+    }
     pushSentence(sentences, text.slice(start, end));
     start = end;
   }
@@ -163,53 +167,189 @@ function pushSentence(sentences: string[], raw: string) {
   }
 }
 
+/* ------------------------------------------------------- spoken length */
+
+/** How much of a reply is spoken before the rest is left to the chat. */
+const SPOKEN_WORD_LIMIT = 40;
+const SPOKEN_SENTENCE_LIMIT = 3;
+
+const countWords = (text: string) => text.split(/\s+/).filter(Boolean).length;
+
+/** Said when a long reply is cut short in speech (the chat has more). */
+export const MORE_IN_CHAT: Record<CallLanguage, string> = {
+  "en-IN": "There's more detail in the chat.",
+  "si-LK": "තව විස්තර chat එකේ තියෙනවා.",
+  "ta-LK": "மேலும் விவரங்கள் chat-இல் உள்ளன.",
+};
+
+/**
+ * What is spoken of a reply: whole sentences up to about 40 words and three
+ * sentences (always at least one), then a pointer to the chat if there is
+ * more. The result
+ * only ever grows as the reply streams in, so speaking can start early.
+ * `capped` means the spoken part is final even if the reply isn't.
+ */
+export function spokenPart(
+  text: string,
+  complete: boolean,
+  lang: CallLanguage
+) {
+  const sentences = splitSentences(text, complete);
+  let words = 0;
+  let end = 0;
+  let searchFrom = 0;
+  for (const [index, sentence] of sentences.entries()) {
+    const at = text.indexOf(sentence, searchFrom);
+    const sentenceWords = countWords(sentence);
+    if (
+      index > 0 &&
+      (words + sentenceWords > SPOKEN_WORD_LIMIT ||
+        index >= SPOKEN_SENTENCE_LIMIT)
+    ) {
+      return {
+        capped: true,
+        text: `${text.slice(0, end).trim()} ${MORE_IN_CHAT[lang]}`,
+      };
+    }
+    words += sentenceWords;
+    end = (at === -1 ? searchFrom : at) + sentence.length;
+    searchFrom = end;
+  }
+  return { capped: false, text };
+}
+
 /* ------------------------------------------------------------ backchannel */
 
 /**
- * Short listening sounds the assistant makes while the student pauses
- * mid-thought, like a person on a call ("mm-hmm"). Sounds a recogniser
- * hears back from the speaker are removed from the student's words.
+ * Listening sounds the assistant makes while the student talks, the way a
+ * person on a call does:
+ * - `continue`: short "go on" sounds on a small pause mid-thought;
+ * - `acknowledge`: after the student has made a longer point;
+ * - `encourage`: when they hesitate ("umm…") and pause, to say it's fine.
  */
-export const BACKCHANNELS: Record<CallLanguage, readonly string[]> = {
-  // Hum sounds only: removing a heard-back "okay" or "right" could delete
-  // words the student really said.
-  "en-IN": ["Mm-hmm.", "Mhm.", "Uh-huh."],
-  "si-LK": ["හ්ම්.", "ඔව්.", "හරි."],
-  "ta-LK": ["ம்ம்.", "சரி.", "ஆமா."],
+export type BackchannelKind = "continue" | "acknowledge" | "encourage";
+
+export const BACKCHANNELS: Record<
+  CallLanguage,
+  Record<BackchannelKind, readonly string[]>
+> = {
+  "en-IN": {
+    acknowledge: ["Okay.", "Right.", "I see.", "Got it."],
+    continue: ["Mm-hmm.", "Mhm.", "Uh-huh.", "Yeah."],
+    encourage: ["Take your time.", "Mm-hmm, go on."],
+  },
+  "si-LK": {
+    acknowledge: ["හරි.", "ආ හරි.", "ඔව් ඔව්."],
+    continue: ["හ්ම්.", "ඔව්.", "හ්ම් හ්ම්."],
+    encourage: ["හ්ම්, කියන්න.", "කමක් නෑ, කියන්න."],
+  },
+  "ta-LK": {
+    acknowledge: ["சரி.", "ஓ சரி.", "புரியுது."],
+    continue: ["ம்ம்.", "ஆமா.", "ம்ம் ம்ம்."],
+    encourage: ["ம்ம், சொல்லுங்க.", "பரவாயில்ல, சொல்லுங்க."],
+  },
 };
 
-/** What a recogniser may write when it hears a backchannel. */
-const ECHO_PATTERNS: Record<CallLanguage, RegExp> = {
-  "en-IN": /(^|\s)(m+-?h+m+|mhm+|hmm+|mm+|uh-?huh)[.!?,]*(?=\s|$)/i,
-  "si-LK": /(^|\s)(හ්ම්|හ්ම|ඔව්|හරි)[.!?,]*(?=\s|$)/,
-  "ta-LK": /(^|\s)(ம்ம்|சரி|ஆமா)[.!?,]*(?=\s|$)/,
+/** Hesitation sounds as recognisers write them. */
+const FILLER =
+  /^(u+m+|u+h+m*|e+r+m*|a+h+|h+m+|m+|mm+|ම්+|හ්ම්|අ+|ඒ+|ම්ම්|ம்+|அ+|ஆ+|ஏ+)$/i;
+/** Words that mean the sentence isn't finished yet. */
+const CONTINUING: Record<CallLanguage, RegExp> = {
+  "en-IN":
+    /^(and|but|so|because|or|then|like|the|a|an|to|of|in|is|was|if|that|which|when|with|for|about|my|i|we|it's|also|actually|basically)$/i,
+  "si-LK": /^(සහ|හා|ඒත්|නමුත්|ඉතින්|නිසා|වගේ|කියලා|එතකොට|ඊට|පස්සේ|හරි|එහෙම|ඒ|මේ|මම|අපි)$/,
+  "ta-LK": /^(மற்றும்|ஆனா|ஆனால்|அப்புறம்|அதனால|அதனால்|ஏன்னா|மாதிரி|என்று|அது|இது|நான்|நாம)$/,
+};
+/** Question words at the end of a sentence (the student wants an answer). */
+const QUESTION_END: Record<CallLanguage, RegExp> = {
+  "en-IN": /^(right|okay|why|how|what|correct|yes|no)$/i,
+  "si-LK": /(ද|නේද|මොකක්ද|කොහොමද|ඇයි|කවදාද|කොහෙද|කීයද|පුළුවන්ද)$/,
+  "ta-LK": /^(என்ன|ஏன்|எப்படி|எப்போ|எங்கே|யார்|எவ்வளவு|சரியா|தெரியுமா|முடியுமா)$/,
+};
+const QUESTION_START =
+  /^((so|and|but|okay|ok|then|also|wait|um+|uh+)[\s,]+)*(what|why|how|when|where|which|who|whose|can|could|would|will|is|are|am|was|were|do|does|did|should|shall|tell|explain)\b/i;
+
+const lastWords = (text: string, count: number) =>
+  text
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(-count)
+    .map((word) => word.replace(/[.,!?;:…"'“”]+/g, ""));
+
+/** The student trails off with "umm" or "hmm". */
+export function endsWithFiller(text: string) {
+  const [last] = lastWords(text, 1);
+  return last !== undefined && FILLER.test(last);
+}
+
+/** The student is mid-sentence ("…and", "…because", "…umm"). */
+export function soundsUnfinished(text: string, lang: CallLanguage) {
+  const [last] = lastWords(text, 1);
+  return (
+    last !== undefined && (FILLER.test(last) || CONTINUING[lang].test(last))
+  );
+}
+
+/** The student has asked something and is waiting for the answer. */
+export function soundsLikeQuestion(text: string, lang: CallLanguage) {
+  const trimmed = text.trim();
+  if (/[?？]$/.test(trimmed)) {
+    return true;
+  }
+  const [last] = lastWords(trimmed, 1);
+  if (last && QUESTION_END[lang].test(last) && lang !== "en-IN") {
+    return true;
+  }
+  if (lang === "en-IN") {
+    // The current sentence starts like a question.
+    const sentence = trimmed.split(/[.!?]\s+/).at(-1) ?? trimmed;
+    return QUESTION_START.test(sentence) && countWords(sentence) >= 3;
+  }
+  return false;
+}
+
+/** Normalises a word for echo matching (case, punctuation, hum spelling). */
+function echoKey(word: string) {
+  const plain = word.toLowerCase().replace(/[.,!?;:…"'“”]+/g, "");
+  if (/^(m+-?h*m+|mhm+|hmm+|uh-?huh|mm+)$/.test(plain)) {
+    return "~hum";
+  }
+  return plain;
+}
+
+export type PlayedBackchannel = {
+  phrase: string;
+  /** Words the student had said when it played. */
+  atWord: number;
 };
 
 /**
- * Removes up to `count` backchannel echoes from the student's words, from
- * the end backwards (echoes come after the speech they answered).
+ * Removes the assistant's own listening sounds where the microphone heard
+ * them back: only right after the point each one played, so the student's
+ * own "okay" elsewhere stays.
  */
 export function removeBackchannelEchoes(
   text: string,
-  lang: CallLanguage,
-  count: number
+  played: readonly PlayedBackchannel[]
 ) {
-  let result = text;
-  const pattern = ECHO_PATTERNS[lang];
-  for (let removed = 0; removed < count; removed += 1) {
-    const words = result.split(/\s+/);
-    let index = -1;
-    for (let position = words.length - 1; position >= 0; position -= 1) {
-      if (pattern.test(` ${words[position]}`)) {
-        index = position;
+  const words = text.split(/\s+/).filter(Boolean);
+  // Latest first, so earlier positions stay valid.
+  for (const { phrase, atWord } of [...played].reverse()) {
+    const target = phrase.split(/\s+/).map(echoKey).filter(Boolean);
+    if (target.length === 0) {
+      continue;
+    }
+    const from = Math.max(0, atWord - 1);
+    const to = Math.min(words.length - target.length, atWord + 6);
+    for (let start = from; start <= to; start += 1) {
+      const matches = target.every(
+        (key, offset) => echoKey(words[start + offset] ?? "") === key
+      );
+      if (matches) {
+        words.splice(start, target.length);
         break;
       }
     }
-    if (index === -1) {
-      break;
-    }
-    words.splice(index, 1);
-    result = words.join(" ");
   }
-  return result.replace(/\s+/g, " ").trim();
+  return words.join(" ");
 }
