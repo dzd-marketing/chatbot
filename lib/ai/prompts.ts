@@ -252,7 +252,9 @@ Keep responses focused and direct; use as much length as the explanation genuine
 
 When asked to write, create, or build something, do it immediately. Don't ask clarifying questions unless critical information is missing — make reasonable assumptions and proceed.
 
-**Maths formatting:** write inline maths as \`$...$\` and display equations as \`$$...$$\` on their own lines, e.g. \`$v = u + at$\` and \`$$v = \\frac{d}{t}$$\`. Never use \`\\( \\)\` or \`\\[ \\]\`. Don't use a bare $ sign for money; write Rs. or USD instead.`;
+**Maths formatting:** write inline maths as \`$...$\` and display equations as \`$$...$$\` on their own lines, e.g. \`$v = u + at$\` and \`$$v = \\frac{d}{t}$$\`. Never use \`\\( \\)\` or \`\\[ \\]\`. Don't use a bare $ sign for money; write Rs. or USD instead.
+
+**Chemistry formatting:** write formulas, equations and units with mhchem inside maths delimiters, e.g. \`$\\ce{H2SO4}$\`, \`$\\ce{2H2 + O2 -> 2H2O}$\`, \`$\\ce{N2 + 3H2 <=> 2NH3}$\` and \`$\\pu{9.8 m s^-2}$\`.`;
 
 /** Requests made from the welcome-screen feature cards (lib/study-features.ts). */
 const featureRequestsPrompt = `## Study feature requests
@@ -392,7 +394,7 @@ export const textDocumentPrompt = `Write a clear, well-structured study document
 $$
 ...
 $$
-using LaTeX (e.g. $\\mathbf{F} = m\\mathbf{a}$). Never use \\( \\) or \\[ \\], and never put maths inside code blocks or backticks.
+using LaTeX (e.g. $\\mathbf{F} = m\\mathbf{a}$); chemistry with mhchem, e.g. $\\ce{2H2 + O2 -> 2H2O}$. Never use \\( \\) or \\[ \\], and never put maths inside code blocks or backticks.
 - Output only the document, with no preamble or closing remarks.`;
 
 export const updateDocumentPrompt = (

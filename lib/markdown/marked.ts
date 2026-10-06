@@ -1,5 +1,6 @@
 import { Marked, type Tokens } from "marked";
 import markedKatex from "marked-katex-extension";
+import "@/lib/katex";
 import { normalizeMathDelimiters } from "@/lib/math-markdown";
 
 /**

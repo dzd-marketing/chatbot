@@ -5,6 +5,7 @@ import type { Vote } from "@/lib/db/schema";
 import { parseFeatureMessage } from "@/lib/study-features";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
+import { isVoiceAudioPart } from "@/lib/voice-message";
 import { MessageContent, MessageResponse } from "../ai-elements/message";
 import { Shimmer } from "../ai-elements/shimmer";
 import {
@@ -29,6 +30,7 @@ import { PreviewAttachment } from "./preview-attachment";
 import { Quiz, QuizSkeleton } from "./quiz";
 import { StoppedNotice } from "./stopped-notice";
 import { FeatureChip } from "./study-features";
+import { VoiceMessage } from "./voice-message";
 import { Weather } from "./weather";
 import {
   isResearchPart,
@@ -122,8 +124,15 @@ const PurePreviewMessage = ({
   /** Show follow-up chips (latest assistant reply, chat idle, not readonly). */
   showSuggestions?: boolean;
 }) => {
+  // A voice message: its recording plays in the voice card instead.
+  const voiceAudio = message.parts.find(
+    (part) => part.type === "file" && isVoiceAudioPart(part)
+  );
+  const voiceData = message.parts.find((part) => part.type === "data-voice");
+  const isVoiceMessage = Boolean(voiceAudio && voiceData);
   const attachmentsFromMessage = message.parts.filter(
-    (part) => part.type === "file"
+    (part): part is Extract<typeof part, { type: "file" }> =>
+      part.type === "file" && !isVoiceAudioPart(part)
   );
 
   useDataStream();
@@ -139,7 +148,8 @@ const PurePreviewMessage = ({
         part.text?.trim().length > 0) ||
       part.type.startsWith("tool-") ||
       part.type === "data-dzd-activity" ||
-      part.type === "data-stopped"
+      part.type === "data-stopped" ||
+      part.type === "data-voice"
   );
   const isThinking = isAssistant && isLoading && !hasAnyContent;
 
@@ -260,7 +270,31 @@ const PurePreviewMessage = ({
       return <StoppedNotice key={key} />;
     }
 
+    if (type === "data-voice") {
+      if (!(voiceAudio && voiceAudio.type === "file")) {
+        return null;
+      }
+      const textPart = message.parts.find((item) => item.type === "text");
+      const featureRequest =
+        textPart?.type === "text" ? parseFeatureMessage(textPart.text) : null;
+      return (
+        <div className="flex w-full flex-col items-end gap-2" key={key}>
+          {featureRequest ? (
+            <FeatureChip feature={featureRequest.feature} />
+          ) : null}
+          <VoiceMessage
+            className="rounded-br-lg shadow-[var(--shadow-card)]"
+            data={part.data}
+            url={voiceAudio.url}
+          />
+        </div>
+      );
+    }
+
     if (type === "text") {
+      if (isUser && isVoiceMessage) {
+        return null; // the transcript is shown in the voice card
+      }
       // A request made from a welcome-screen feature card.
       const featureRequest = isUser ? parseFeatureMessage(part.text) : null;
       if (featureRequest) {
@@ -553,7 +587,7 @@ const PurePreviewMessage = ({
       isLoading={isLoading}
       key={`action-${message.id}`}
       message={message}
-      onEdit={onEdit ? () => onEdit(message) : undefined}
+      onEdit={onEdit && !isVoiceMessage ? () => onEdit(message) : undefined}
       vote={vote}
     />
   );

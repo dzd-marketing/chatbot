@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { reasoningLevels } from "@/lib/ai/models";
+import {
+  MAX_VOICE_MS,
+  MAX_VOICE_WORDS,
+  VOICE_AUDIO_TYPES,
+} from "@/lib/voice-message";
 
 const textPartSchema = z.object({
   text: z.string().min(1).max(2000),
@@ -9,13 +14,39 @@ const textPartSchema = z.object({
 const filePartSchema = z.object({
   // text/plain: an uploaded PDF/Word/text file, already turned into text
   // by /api/files/upload (the original name is kept in `name`).
-  mediaType: z.enum(["image/jpeg", "image/png", "text/plain"]),
+  // audio/*: a voice message recording (lib/voice-message.ts).
+  mediaType: z.enum([
+    "image/jpeg",
+    "image/png",
+    "text/plain",
+    ...VOICE_AUDIO_TYPES,
+  ]),
   name: z.string().min(1).max(100),
   type: z.enum(["file"]),
   url: z.url(),
 });
 
-const partSchema = z.union([textPartSchema, filePartSchema]);
+// A voice message's words and timings (shown with the recording).
+const voicePartSchema = z.object({
+  data: z.object({
+    duration: z
+      .number()
+      .min(0)
+      .max(MAX_VOICE_MS + 60_000),
+    words: z
+      .array(
+        z.object({
+          start: z.number().min(0),
+          text: z.string().min(1).max(100),
+        })
+      )
+      .max(MAX_VOICE_WORDS),
+  }),
+  id: z.string().max(100).optional(),
+  type: z.enum(["data-voice"]),
+});
+
+const partSchema = z.union([textPartSchema, filePartSchema, voicePartSchema]);
 
 const userMessageSchema = z.object({
   id: z.uuid(),

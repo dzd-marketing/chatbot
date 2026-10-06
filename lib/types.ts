@@ -65,6 +65,13 @@ export type DzdActivityData = {
   totalMs?: number;
 };
 
+export type VoiceData = {
+  /** Recording length in milliseconds. */
+  duration: number;
+  /** The transcript, word by word, with when each word starts (ms). */
+  words: { text: string; start: number }[];
+};
+
 export type CustomUIDataTypes = {
   textDelta: string;
   imageDelta: string;
@@ -84,6 +91,8 @@ export type CustomUIDataTypes = {
   "dzd-activity": DzdActivityData;
   /** The student stopped this reply (lib/chat/stopped.ts). */
   stopped: null;
+  /** A voice message: words with their start times (lib/voice-message.ts). */
+  voice: VoiceData;
 };
 
 export type ChatMessage = UIMessage<

@@ -67,6 +67,7 @@ import {
   generateUUID,
   getTextFromMessage,
 } from "@/lib/utils";
+import { voiceMessagesForModel } from "@/lib/voice-message";
 import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
@@ -242,9 +243,12 @@ export async function POST(request: Request) {
 
     // Uploaded PDF / Word / text files become text the model can read.
     // DZD Learn AI runs on CPU, so it gets a much smaller share.
+    // Voice messages: the model reads the transcript, not the audio.
     const modelMessages = await convertToModelMessages(
       inlineDocumentAttachments(
-        isDzd ? recentHistory(uiMessages, DZD_HISTORY_MESSAGES) : uiMessages,
+        voiceMessagesForModel(
+          isDzd ? recentHistory(uiMessages, DZD_HISTORY_MESSAGES) : uiMessages
+        ),
         isDzd
           ? { perDocumentChars: 8000, totalChars: 12_000 }
           : { perDocumentChars: 60_000, totalChars: 120_000 }

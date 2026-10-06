@@ -14,6 +14,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+// Registers \ce / \pu (chemistry) on the KaTeX used by @streamdown/math.
+import "@/lib/katex";
 import { normalizeMathDelimiters } from "@/lib/math-markdown";
 import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";

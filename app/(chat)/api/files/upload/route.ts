@@ -8,6 +8,7 @@ import {
   detectDocumentKind,
   extractDocumentText,
 } from "@/lib/documents/extract";
+import { audioExtension, normalizeAudioType } from "@/lib/voice-message";
 
 /** Images are scaled down in the browser first (lib/image-compress.ts). */
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
@@ -106,7 +107,11 @@ const BLOB_TIMEOUT_MS = 15_000;
 let warnedNoBlobStore = false;
 
 /** Stores the image in Vercel Blob, or returns null if that isn't possible. */
-async function uploadToBlob(name: string, data: ArrayBuffer) {
+async function uploadToBlob(
+  name: string,
+  data: ArrayBuffer,
+  contentType?: string
+) {
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     if (!warnedNoBlobStore) {
       warnedNoBlobStore = true;
@@ -132,6 +137,8 @@ async function uploadToBlob(name: string, data: ArrayBuffer) {
         put(name, data, {
           abortSignal: controller.signal,
           access: "public",
+          addRandomSuffix: true,
+          ...(contentType ? { contentType } : {}),
         }),
         timeout,
       ]);
@@ -146,6 +153,40 @@ async function uploadToBlob(name: string, data: ArrayBuffer) {
     );
     return null;
   }
+}
+
+/** A voice message recording, stored for playback in the chat. */
+async function handleVoiceRecording(file: Blob) {
+  const type = normalizeAudioType(file.type);
+  if (!type) {
+    return NextResponse.json(
+      { error: "This browser recorded an audio format that isn't supported." },
+      { status: 400 }
+    );
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json(
+      { error: "The voice message is too long. Please keep it shorter." },
+      { status: 413 }
+    );
+  }
+  const name = `voice-message.${audioExtension(type)}`;
+  const data = await file.arrayBuffer();
+  const blob = await uploadToBlob(name, data, type);
+  if (blob) {
+    return NextResponse.json({ ...blob, contentType: type, pathname: name });
+  }
+  if (file.size > MAX_INLINE_BYTES) {
+    return NextResponse.json(
+      { error: "The voice message is too long. Please keep it shorter." },
+      { status: 413 }
+    );
+  }
+  return NextResponse.json({
+    contentType: type,
+    pathname: name,
+    url: `data:${type};base64,${Buffer.from(data).toString("base64")}`,
+  });
 }
 
 export async function POST(request: Request) {
@@ -168,6 +209,10 @@ export async function POST(request: Request) {
 
     if (!(file instanceof Blob)) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+    }
+
+    if (file.type.startsWith("audio/")) {
+      return await handleVoiceRecording(file);
     }
 
     if (!isImage(file)) {

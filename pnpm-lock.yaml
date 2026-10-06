@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  katex: ^0.17.0
+
 importers:
 
   .:
@@ -3592,10 +3595,6 @@ packages:
   jszip@3.10.2:
     resolution: {integrity: sha512-3l+rb15IOWtUhU0H5MFqES/T6Kh7abYwjosBey/vD6hDt8zoEffkSC5Ws5SGtgVw3gBx2NEbhTeSW1+kWkpyTQ==}
 
-  katex@0.16.28:
-    resolution: {integrity: sha512-YHzO7721WbmAL6Ov1uzN/l5mY5WWWhJBSW+jq4tkfZfsxmo1hu6frS0EOswvjBUnWE6NtjEs48SFn5CQESRLZg==}
-    hasBin: true
-
   katex@0.17.0:
     resolution: {integrity: sha512-Vdw0ATsQ9V+LuegM/BTwQqV/6cTl5lbGcIrU+BCgLxyf6bo38ybOr372tuSIxir3CN720flu1meYR6XzNMwQnw==}
     hasBin: true
@@ -3760,7 +3759,7 @@ packages:
   marked-katex-extension@5.1.13:
     resolution: {integrity: sha512-+6gVygGg5at9g+YsuIQZk7XcAc6Pg1P0grEJKEWvF7DAwceZ7ZIvU0fhQe6auUqSbnPmSjJxZuICdSCdbGaFRw==}
     peerDependencies:
-      katex: '>=0.16 <0.19'
+      katex: ^0.17.0
       marked: '>=4 <19'
 
   marked@16.4.2:
@@ -6674,7 +6673,7 @@ snapshots:
 
   '@streamdown/math@1.0.2(react@19.2.7)':
     dependencies:
-      katex: 0.16.28
+      katex: 0.17.0
       react: 19.2.7
       rehype-katex: 7.0.1
       remark-math: 6.0.0
@@ -8020,10 +8019,6 @@ snapshots:
       readable-stream: 2.3.8
       setimmediate: 1.0.5
 
-  katex@0.16.28:
-    dependencies:
-      commander: 8.3.0
-
   katex@0.17.0:
     dependencies:
       commander: 8.3.0
@@ -8413,7 +8408,7 @@ snapshots:
       dagre-d3-es: 7.0.13
       dayjs: 1.11.19
       dompurify: 3.3.1
-      katex: 0.16.28
+      katex: 0.17.0
       khroma: 2.1.0
       lodash-es: 4.17.23
       marked: 16.4.2
@@ -8535,7 +8530,7 @@ snapshots:
     dependencies:
       '@types/katex': 0.16.7
       devlop: 1.1.0
-      katex: 0.16.28
+      katex: 0.17.0
       micromark-factory-space: 2.0.1
       micromark-util-character: 2.1.1
       micromark-util-symbol: 2.0.1
@@ -9205,7 +9200,7 @@ snapshots:
       '@types/katex': 0.16.7
       hast-util-from-html-isomorphic: 2.0.0
       hast-util-to-text: 4.0.2
-      katex: 0.16.28
+      katex: 0.17.0
       unist-util-visit-parents: 6.0.1
       vfile: 6.0.3
 

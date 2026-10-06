@@ -1,4 +1,4 @@
-import katex from "katex";
+import katex from "@/lib/katex";
 import {
   createMarkdown,
   escapeHtml,

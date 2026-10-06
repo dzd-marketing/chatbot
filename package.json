@@ -120,5 +120,10 @@
   "lint-staged": {
     "*": "corepack pnpm run fix --"
   },
-  "packageManager": "pnpm@10.32.1"
+  "packageManager": "pnpm@10.32.1",
+  "pnpm": {
+    "overrides": {
+      "katex": "$katex"
+    }
+  }
 }

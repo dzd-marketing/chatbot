@@ -3,7 +3,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import equal from "fast-deep-equal";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUpIcon,
   BrainIcon,
@@ -41,6 +41,11 @@ import {
 import { useActiveChat } from "@/hooks/use-active-chat";
 import { useChatModel, useChatModels } from "@/hooks/use-chat-models";
 import {
+  useVoiceRecorder,
+  type VoiceLanguage,
+  type VoiceResult,
+} from "@/hooks/use-voice-recorder";
+import {
   type ChatModel,
   DEFAULT_CHAT_MODEL,
   type ModelCapabilities,
@@ -51,6 +56,7 @@ import { isExternalUrl, PRIVACY_URL, TERMS_URL } from "@/lib/legal";
 import { featureMessage, type StudyFeature } from "@/lib/study-features";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { cn, generateUUID } from "@/lib/utils";
+import { audioExtension, normalizeAudioType } from "@/lib/voice-message";
 import {
   PromptInput,
   PromptInputFooter,
@@ -71,6 +77,7 @@ import {
 } from "./slash-commands";
 import { FeatureChip, StudyFeatureCards } from "./study-features";
 import type { VisibilityType } from "./visibility-selector";
+import { MicButton, VoiceControls, VoicePanel } from "./voice-input";
 
 /** Documents are read as text on the server (api/files/upload). */
 const DOCUMENT_ACCEPT =
@@ -286,48 +293,65 @@ function PureMultimodalInput({
     [chatId, resolvedTheme, router, setInput, setMessages, setTheme]
   );
 
-  const submitForm = useCallback(() => {
-    window.history.pushState(
-      {},
-      "",
-      `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${chatId}`
-    );
+  /**
+   * Sends the input, or `text` with `extraParts` (a voice message's
+   * recording). `keepInput` leaves anything typed in the box.
+   */
+  const submitForm = useCallback(
+    (
+      options: {
+        text?: string;
+        extraParts?: ChatMessage["parts"];
+        keepInput?: boolean;
+      } = {}
+    ) => {
+      const text = options.text ?? input;
+      window.history.pushState(
+        {},
+        "",
+        `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${chatId}`
+      );
 
-    sendMessage({
-      parts: [
-        ...attachments.map((attachment) => ({
-          mediaType: attachment.contentType,
-          name: attachment.name,
-          type: "file" as const,
-          url: attachment.url,
-        })),
-        {
-          text: feature ? featureMessage(feature, input) : input,
-          type: "text",
-        },
-      ],
-      role: "user",
-    });
+      sendMessage({
+        parts: [
+          ...attachments.map((attachment) => ({
+            mediaType: attachment.contentType,
+            name: attachment.name,
+            type: "file" as const,
+            url: attachment.url,
+          })),
+          ...(options.extraParts ?? []),
+          {
+            text: feature ? featureMessage(feature, text) : text,
+            type: "text",
+          },
+        ],
+        role: "user",
+      });
 
-    setAttachments([]);
-    setFeature(null);
-    setLocalStorageInput("");
-    setInput("");
+      setAttachments([]);
+      setFeature(null);
+      if (!options.keepInput) {
+        setLocalStorageInput("");
+        setInput("");
+      }
 
-    if (width && width > 768) {
-      textareaRef.current?.focus();
-    }
-  }, [
-    input,
-    feature,
-    setInput,
-    attachments,
-    sendMessage,
-    setAttachments,
-    setLocalStorageInput,
-    width,
-    chatId,
-  ]);
+      if (width && width > 768) {
+        textareaRef.current?.focus();
+      }
+    },
+    [
+      input,
+      feature,
+      setInput,
+      attachments,
+      sendMessage,
+      setAttachments,
+      setLocalStorageInput,
+      width,
+      chatId,
+    ]
+  );
 
   const uploadFile = useCallback(async (original: File) => {
     let file: File = original;
@@ -487,11 +511,123 @@ function PureMultimodalInput({
   }, []);
 
   // A feature like "Summarize document" can be sent with just a file.
+  // Voice typing: the transcript is sent as soon as the student stops.
+  const [voiceLanguage, setVoiceLanguage] = useLocalStorage<VoiceLanguage>(
+    "dzd-voice-language",
+    "en-IN"
+  );
+  // Uploads the recording, then sends it with its transcript. If the
+  // upload fails, the transcript is sent as a text message instead.
+  const sendVoiceMessage = useCallback(
+    async (
+      transcript: string,
+      recording: NonNullable<VoiceResult["voice"]>
+    ) => {
+      const queueName = "Voice message";
+      setUploadQueue((queue) => [...queue, queueName]);
+      try {
+        const type = normalizeAudioType(recording.mimeType) ?? "audio/webm";
+        const formData = new FormData();
+        formData.append(
+          "file",
+          new File([recording.blob], `voice-message.${audioExtension(type)}`, {
+            type,
+          })
+        );
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/files/upload`,
+          { body: formData, method: "POST" }
+        );
+        const result = (await response.json().catch(() => ({}))) as {
+          url?: string;
+          contentType?: string;
+          pathname?: string;
+          error?: string;
+        };
+        const mediaType = normalizeAudioType(result.contentType ?? "");
+        if (!(response.ok && result.url && mediaType)) {
+          throw new Error(result.error ?? "Upload failed", {
+            cause: response.status,
+          });
+        }
+        submitForm({
+          extraParts: [
+            {
+              mediaType,
+              name: result.pathname ?? "voice-message",
+              type: "file",
+              url: result.url,
+            } as ChatMessage["parts"][number],
+            { data: recording.data, type: "data-voice" },
+          ],
+          keepInput: true,
+          text: transcript,
+        });
+      } catch (error) {
+        console.warn("Voice message upload failed:", error);
+        toast(
+          "Couldn't upload the recording, so your message was sent as text."
+        );
+        submitForm({ keepInput: true, text: transcript });
+      } finally {
+        setUploadQueue((queue) => queue.filter((name) => name !== queueName));
+      }
+    },
+    [submitForm]
+  );
+
+  const handleVoiceFinish = useCallback(
+    ({ text: transcript, voice: recording, recordingLost }: VoiceResult) => {
+      if (!transcript) {
+        toast("Didn't catch that. Tap the mic and try again.");
+        return;
+      }
+      const busy = !(status === "ready" || status === "error");
+      if (busy || uploadQueue.length > 0) {
+        setInput([input.trim(), transcript].filter(Boolean).join(" "));
+        toast("Your message is in the box, ready to send.");
+        return;
+      }
+      if (recording) {
+        // Sent as a voice message; anything typed stays in the box.
+        sendVoiceMessage(transcript, recording);
+        return;
+      }
+      if (recordingLost) {
+        toast(
+          "This browser couldn't record audio while listening, so your message was sent as text."
+        );
+      }
+      submitForm({
+        text: [input.trim(), transcript].filter(Boolean).join(" "),
+      });
+    },
+    [input, sendVoiceMessage, setInput, status, submitForm, uploadQueue.length]
+  );
+  const handleVoiceError = useCallback((message: string) => {
+    toast.error(message);
+  }, []);
+  const voice = useVoiceRecorder({
+    lang: voiceLanguage,
+    onError: handleVoiceError,
+    onFinish: handleVoiceFinish,
+  });
+  const voiceActive = voice.state !== "idle";
+  const startVoice = voice.start;
+  const handleMicClick = useCallback(() => {
+    setSlashOpen(false);
+    textareaRef.current?.blur();
+    startVoice();
+  }, [startVoice]);
+
   const canSend =
     input.trim().length > 0 ||
     (attachments.length > 0 && (!feature || feature.attachmentOnly === true));
 
   const handlePromptSubmit = useCallback(() => {
+    if (voiceActive) {
+      return; // Enter while listening sends the voice message instead
+    }
     if (input.startsWith("/")) {
       const query = input.slice(1).trim();
       const cmd = slashCommands.find((c) => c.name === query);
@@ -508,10 +644,14 @@ function PureMultimodalInput({
     } else {
       toast.error("Please wait for the model to finish its response!");
     }
-  }, [canSend, handleSlashSelect, input, status, submitForm]);
+  }, [canSend, handleSlashSelect, input, status, submitForm, voiceActive]);
 
   const handleTextareaKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (voiceActive) {
+        e.preventDefault();
+        return;
+      }
       if (slashOpen) {
         const filtered = slashCommands.filter((cmd) =>
           cmd.name.startsWith(slashQuery.toLowerCase())
@@ -559,6 +699,7 @@ function PureMultimodalInput({
       slashIndex,
       slashOpen,
       slashQuery,
+      voiceActive,
     ]
   );
 
@@ -639,9 +780,23 @@ function PureMultimodalInput({
           </div>
         )}
         <div className="relative flex w-full flex-1 flex-col">
+          <AnimatePresence>
+            {voiceActive ? (
+              <VoicePanel
+                getLevel={voice.getLevel}
+                key="voice-panel"
+                state={voice.state}
+                transcript={voice.transcript}
+              />
+            ) : null}
+          </AnimatePresence>
           <PromptInputTextarea
+            aria-hidden={voiceActive || undefined}
             aria-label={editingMessage ? "Edit your message" : "Message DZD AI"}
-            className="min-h-24 w-full px-4 pt-3.5 pb-1.5 text-[14px] leading-relaxed placeholder:text-muted-foreground/45"
+            className={cn(
+              "min-h-24 w-full px-4 pt-3.5 pb-1.5 text-[14px] leading-relaxed transition-opacity duration-200 placeholder:text-muted-foreground/45",
+              voiceActive && "pointer-events-none opacity-0"
+            )}
             data-testid="multimodal-input"
             onChange={handleInput}
             onKeyDown={handleTextareaKeyDown}
@@ -649,7 +804,7 @@ function PureMultimodalInput({
             ref={textareaRef}
             value={input}
           />
-          {!editingMessage && input.length === 0 ? (
+          {!(editingMessage || voiceActive) && input.length === 0 ? (
             <AnimatedPlaceholder
               className="pointer-events-none absolute inset-x-0 top-0 select-none overflow-hidden px-4 pt-3.5 text-[14px] text-muted-foreground/55 leading-relaxed"
               hints={feature && !editingMessage ? feature.hints : undefined}
@@ -658,38 +813,80 @@ function PureMultimodalInput({
           ) : null}
         </div>
         <PromptInputFooter className="px-3 pb-3">
-          <PromptInputTools>
-            <AttachmentsButton
-              fileInputRef={fileInputRef}
-              selectedModelId={selectedModelId}
-              status={status}
-            />
-            <ModelSelectorCompact
-              onModelChange={onModelChange}
-              selectedModelId={selectedModelId}
-            />
-            <ReasoningDropdown />
-            <ToolsDropdown />
-          </PromptInputTools>
+          <AnimatePresence initial={false} mode="popLayout">
+            {voiceActive ? (
+              <motion.div
+                animate={{ filter: "blur(0px)", opacity: 1 }}
+                className="w-full"
+                exit={{ filter: "blur(4px)", opacity: 0 }}
+                initial={{ filter: "blur(4px)", opacity: 0 }}
+                key="voice-controls"
+                transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+              >
+                <VoiceControls
+                  lang={voiceLanguage}
+                  onCancel={voice.cancel}
+                  onLangChange={setVoiceLanguage}
+                  onSend={voice.stop}
+                  startedAt={voice.startedAt}
+                  state={voice.state}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                animate={{ filter: "blur(0px)", opacity: 1 }}
+                className="flex w-full items-center justify-between gap-1"
+                exit={{ filter: "blur(4px)", opacity: 0 }}
+                initial={{ filter: "blur(4px)", opacity: 0 }}
+                key="composer-controls"
+                transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+              >
+                <PromptInputTools>
+                  <AttachmentsButton
+                    fileInputRef={fileInputRef}
+                    selectedModelId={selectedModelId}
+                    status={status}
+                  />
+                  <ModelSelectorCompact
+                    onModelChange={onModelChange}
+                    selectedModelId={selectedModelId}
+                  />
+                  <ReasoningDropdown />
+                  <ToolsDropdown />
+                </PromptInputTools>
 
-          {status === "submitted" || status === "streaming" ? (
-            <StopButton setMessages={setMessages} stop={stop} />
-          ) : (
-            <PromptInputSubmit
-              className={cn(
-                "h-7 w-7 rounded-xl transition-all duration-200",
-                canSend
-                  ? "bg-primary text-primary-foreground hover:bg-primary/85 active:scale-95"
-                  : "bg-muted text-muted-foreground/25 cursor-not-allowed"
-              )}
-              data-testid="send-button"
-              disabled={!canSend || uploadQueue.length > 0}
-              status={status}
-              variant="secondary"
-            >
-              <ArrowUpIcon className="size-4" />
-            </PromptInputSubmit>
-          )}
+                <div className="flex items-center gap-1.5">
+                  {voice.supported && !editingMessage ? (
+                    <MicButton
+                      disabled={
+                        !(status === "ready" || status === "error") ||
+                        uploadQueue.length > 0
+                      }
+                      onClick={handleMicClick}
+                    />
+                  ) : null}
+                  {status === "submitted" || status === "streaming" ? (
+                    <StopButton setMessages={setMessages} stop={stop} />
+                  ) : (
+                    <PromptInputSubmit
+                      className={cn(
+                        "h-7 w-7 rounded-xl transition-all duration-200",
+                        canSend
+                          ? "bg-primary text-primary-foreground hover:bg-primary/85 active:scale-95"
+                          : "bg-muted text-muted-foreground/25 cursor-not-allowed"
+                      )}
+                      data-testid="send-button"
+                      disabled={!canSend || uploadQueue.length > 0}
+                      status={status}
+                      variant="secondary"
+                    >
+                      <ArrowUpIcon className="size-4" />
+                    </PromptInputSubmit>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </PromptInputFooter>
       </PromptInput>
 

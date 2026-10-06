@@ -1,6 +1,6 @@
-import katex from "katex";
 import type { NodeSpec } from "prosemirror-model";
 import { tableNodes } from "prosemirror-tables";
+import katex from "@/lib/katex";
 
 /**
  * Extra node types for AI documents in the editor: maths (rendered with

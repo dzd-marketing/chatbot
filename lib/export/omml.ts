@@ -1,5 +1,5 @@
-import katex from "katex";
 import { mml2omml } from "mathml2omml";
+import katex from "@/lib/katex";
 
 /**
  * TeX -> Word equation (OMML): KaTeX writes MathML, mathml2omml turns it
@@ -22,6 +22,25 @@ function fixRunProperties(omml: string) {
     .replace(/<m:nor\/>(?=<m:sty\b)/g, "");
 }
 
+/**
+ * mathml2omml doesn't know <mphantom> (invisible spacing, e.g. the
+ * \vphantom{X} mhchem puts next to every subscript) or <mpadded>, and would
+ * print the phantom's content. Phantoms are dropped, mpadded is unwrapped.
+ */
+function simplifyMathml(mathml: string) {
+  let result = mathml;
+  let previous = "";
+  while (previous !== result) {
+    previous = result;
+    // innermost phantom first (no nested phantom inside the match)
+    result = result.replace(
+      /<mphantom\b[^>]*>(?:(?!<mphantom\b)[\s\S])*?<\/mphantom>/g,
+      ""
+    );
+  }
+  return result.replace(/<\/?mpadded\b[^>]*>/g, "");
+}
+
 /** OMML for the TeX (`<m:oMath>`, or `<m:oMathPara>` when displayed). */
 export function texToOmml(tex: string, displayMode: boolean): string | null {
   try {
@@ -36,7 +55,7 @@ export function texToOmml(tex: string, displayMode: boolean): string | null {
     if (!mathml) {
       return null;
     }
-    const omml = fixRunProperties(mml2omml(mathml));
+    const omml = fixRunProperties(mml2omml(simplifyMathml(mathml)));
     if (!omml.startsWith("<m:oMath") || omml.includes('"undefined"')) {
       return null;
     }
