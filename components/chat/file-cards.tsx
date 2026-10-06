@@ -25,6 +25,11 @@ const KIND_STYLE: Record<
     label: "ZIP",
     tint: "bg-amber-500/12 text-amber-700 dark:text-amber-400",
   },
+  file: {
+    icon: FileIcon,
+    label: "File",
+    tint: "bg-primary/12 text-primary",
+  },
   image: {
     icon: FileImageIcon,
     label: "Image",
@@ -101,7 +106,11 @@ function FileCard({ file }: { file: CheckedFile }) {
   const style = KIND_STYLE[file.kind] ?? KIND_STYLE.page;
   const Icon = style.icon;
   const broken = file.status === "broken";
-  const primaryUrl = file.downloadUrl ?? file.url;
+  // Downloads through /api/files/download (right in the chat) when
+  // possible; otherwise the file's own link.
+  const primaryUrl = file.downloadPath
+    ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${file.downloadPath}`
+    : (file.downloadUrl ?? file.url);
   const size = formatSize(file.sizeBytes);
   const isPage = file.kind === "page";
 
@@ -154,7 +163,7 @@ function FileCard({ file }: { file: CheckedFile }) {
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          {isHttp(primaryUrl) ? (
+          {file.downloadPath || isHttp(primaryUrl) ? (
             <a
               className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 font-medium text-[13px] text-primary-foreground transition-opacity hover:opacity-90"
               href={primaryUrl}
@@ -171,12 +180,12 @@ function FileCard({ file }: { file: CheckedFile }) {
           ) : null}
           {file.downloadUrl && isHttp(file.url) ? (
             <a
-              aria-label="Open in Google Drive"
+              aria-label="View the source page"
               className="inline-flex h-8 items-center justify-center rounded-lg border border-border/60 px-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               href={file.url}
               rel="noopener noreferrer"
               target="_blank"
-              title="View online"
+              title={`View on ${file.host}`}
             >
               <ExternalLinkIcon className="size-3.5" />
             </a>

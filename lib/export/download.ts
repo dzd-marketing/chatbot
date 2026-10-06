@@ -1,17 +1,6 @@
 /** Browser download helpers for exported documents. */
 
-/** A safe file name from a document title. */
-export function fileNameFor(title: string, extension: string) {
-  const base =
-    Array.from(title)
-      .map((character) => (character.charCodeAt(0) < 32 ? " " : character))
-      .join("")
-      .replace(/[\\/:*?"<>|]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 80) || "DZD Learn document";
-  return `${base}.${extension}`;
-}
+import { fileNameFor } from "./file-name";
 
 export function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);

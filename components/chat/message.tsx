@@ -203,6 +203,15 @@ const PurePreviewMessage = ({
       .slice(dzdActivityIndex + 1)
       .some((part) => part.type === "text" && part.text.trim().length > 0);
 
+  // One document per reply: older replies may contain duplicate
+  // createDocument calls, so only the first working one is shown.
+  const shownDocumentCallId = message.parts?.find(
+    (part) =>
+      part.type === "tool-createDocument" &&
+      part.state !== "output-error" &&
+      !(part.output && "error" in part.output)
+  ) as { toolCallId?: string } | undefined;
+
   const parts = message.parts?.map((part, index) => {
     const { type } = part;
     const key = `message-${message.id}-part-${index}`;
@@ -331,6 +340,14 @@ const PurePreviewMessage = ({
 
     if (type === "tool-createDocument") {
       const { toolCallId } = part;
+
+      if (
+        shownDocumentCallId?.toolCallId !== undefined &&
+        shownDocumentCallId.toolCallId !== toolCallId &&
+        !(part.output && "error" in part.output)
+      ) {
+        return null;
+      }
 
       if (part.output && "error" in part.output) {
         return (

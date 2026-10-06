@@ -18,12 +18,29 @@ export const createDocument = ({
   session,
   dataStream,
   modelId,
-}: CreateDocumentProps) =>
-  tool({
+}: CreateDocumentProps) => {
+  /**
+   * One document per reply. Some models call createDocument again (in a
+   * later step, or several times at once), which made duplicate documents.
+   * Set before any await, so parallel calls see it too.
+   */
+  let created: { id: string; kind: string; title: string } | null = null;
+
+  return tool({
     description:
       "Create an artifact. You MUST specify kind: use 'code' for any programming/algorithm request (creates a script), 'text' for essays/writing (creates a document), 'sheet' for spreadsheets/data.",
     execute: async ({ title, kind }) => {
+      if (created) {
+        return {
+          content: `The document "${created.title}" was already created in this reply and is visible to the user. Do not create another one; just tell the student it is ready.`,
+          duplicate: true,
+          id: created.id,
+          kind: created.kind as typeof kind,
+          title: created.title,
+        };
+      }
       const id = generateUUID();
+      created = { id, kind, title };
 
       dataStream.write({
         data: kind,
@@ -87,3 +104,4 @@ export const createDocument = ({
       title: z.string().describe("The title of the artifact"),
     }),
   });
+};

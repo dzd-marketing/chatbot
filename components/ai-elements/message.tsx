@@ -14,10 +14,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { normalizeMathDelimiters } from "@/lib/math-markdown";
 import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
-import { math } from "@streamdown/math";
+import { createMathPlugin } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import {
@@ -320,6 +321,9 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
+/** $…$ inline maths is off by default in Streamdown; DZD AI uses it. */
+const math = createMathPlugin({ singleDollarTextMath: true });
+
 const streamdownPlugins = { cjk, code, math, mermaid };
 
 /**
@@ -335,7 +339,7 @@ const streamdownAnimation = {
 } as const;
 
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
+  ({ className, children, ...props }: MessageResponseProps) => (
     <Streamdown
       animated={streamdownAnimation}
       className={cn(
@@ -344,7 +348,12 @@ export const MessageResponse = memo(
       )}
       plugins={streamdownPlugins}
       {...props}
-    />
+    >
+      {/* \( \) and \[ \] maths -> $ and $$, which KaTeX renders. */}
+      {typeof children === "string"
+        ? normalizeMathDelimiters(children)
+        : children}
+    </Streamdown>
   ),
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&

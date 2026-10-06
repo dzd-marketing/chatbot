@@ -232,7 +232,8 @@ export function directDownloadUrl(raw: string): string {
       url.pathname.match(/\/file\/d\/([\w-]+)/)?.[1] ??
       url.searchParams.get("id");
     if (id) {
-      return `https://drive.google.com/uc?export=download&id=${id}`;
+      // confirm=t skips Drive's "can't scan for viruses" page (big files).
+      return `https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`;
     }
   }
   if (url.hostname === "docs.google.com") {

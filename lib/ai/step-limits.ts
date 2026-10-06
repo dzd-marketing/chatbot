@@ -18,7 +18,21 @@ export const MAX_STEPS = 60;
 export const FINAL_STEP_NOTE =
   "Time is up for tool calls in this reply. Do not call any tools. Write your final answer to the student now, using what you found. Share the most relevant links from your tool results, and if you did not find what they asked for, say so and suggest where to look.";
 
-type StepInfo = { stepNumber: number };
+type StepInfo = {
+  stepNumber: number;
+  steps?: { toolCalls?: { toolName: string }[] }[];
+};
+
+/** Tools that create or rewrite a document (one per reply). */
+const DOCUMENT_WRITE_TOOLS = new Set<string>([
+  "createDocument",
+  "updateDocument",
+]);
+const DOCUMENT_TOOLS = new Set<string>([
+  "createDocument",
+  "editDocument",
+  "updateDocument",
+]);
 
 /**
  * streamText's prepareStep: tools stay available until the time budget is
@@ -38,7 +52,7 @@ export function createPrepareStep({
   /** For tests. */
   now?: () => number;
 }) {
-  return ({ stepNumber }: StepInfo) => {
+  return ({ stepNumber, steps = [] }: StepInfo) => {
     if (enabledTools.length === 0) {
       return;
     }
@@ -48,6 +62,16 @@ export function createPrepareStep({
         activeTools: [] as ChatToolName[],
         instructions: `${instructions}\n\n${FINAL_STEP_NOTE}`,
         toolChoice: "none" as const,
+      };
+    }
+    // Once a document was created or rewritten, the document tools are
+    // removed, so the model can't make the same document again.
+    const wroteDocument = steps.some((step) =>
+      step.toolCalls?.some((call) => DOCUMENT_WRITE_TOOLS.has(call.toolName))
+    );
+    if (wroteDocument) {
+      return {
+        activeTools: enabledTools.filter((name) => !DOCUMENT_TOOLS.has(name)),
       };
     }
   };

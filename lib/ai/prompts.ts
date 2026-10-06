@@ -184,6 +184,7 @@ ${
 
 **Giving documents to download**
 - When you give the student files to download (past papers, marking schemes, syllabi, timetables, notes), call \`shareFiles\` with their links and clear titles. It shows them as download cards and checks that each link works.
+- Prefer the direct file link (e.g. a .pdf or Google Drive link) when you saw one. Otherwise give the page that offers the download (e.g. a pastpapers.wiki paper page); \`shareFiles\` finds the file on that page so the student can download it from the chat. Use one card per file, not the site's home page or category pages.
 - Don't recommend links it reports as broken; look for another source instead, or say plainly that the file couldn't be found.
 - After \`shareFiles\`, introduce the files in a sentence or two. Don't list the same links again in your text.
 
@@ -249,7 +250,9 @@ const generalBehaviourPrompt = `## General behaviour
 
 Keep responses focused and direct; use as much length as the explanation genuinely needs.
 
-When asked to write, create, or build something, do it immediately. Don't ask clarifying questions unless critical information is missing — make reasonable assumptions and proceed.`;
+When asked to write, create, or build something, do it immediately. Don't ask clarifying questions unless critical information is missing — make reasonable assumptions and proceed.
+
+**Maths formatting:** write inline maths as \`$...$\` and display equations as \`$$...$$\` on their own lines, e.g. \`$v = u + at$\` and \`$$v = \\frac{d}{t}$$\`. Never use \`\\( \\)\` or \`\\[ \\]\`. Don't use a bare $ sign for money; write Rs. or USD instead.`;
 
 /**
  * DZD AI persona + the capability block that matches what this request can

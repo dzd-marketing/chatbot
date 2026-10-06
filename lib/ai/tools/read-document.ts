@@ -7,6 +7,7 @@ import {
   detectDocumentKind,
   extractDocumentText,
 } from "@/lib/documents/extract";
+import { findFileLink } from "@/lib/net/file-links";
 import {
   directDownloadUrl,
   SafeFetchError,
@@ -69,7 +70,8 @@ function fileNameFrom(url: string, headers: Headers) {
 
 async function loadDocument(
   url: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  followPage = true
 ): Promise<CachedDocument> {
   const cached = cache.get(url);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
@@ -94,6 +96,16 @@ async function loadDocument(
   const kind = detectDocumentKind({ data, mediaType, name });
 
   if (kind === "unsupported" && /html/i.test(mediaType)) {
+    // A download page (e.g. pastpapers.wiki): read the file it offers.
+    const fileLink =
+      followPage && !response.url.includes("google.com")
+        ? findFileLink(new TextDecoder("utf-8").decode(data), response.url)
+        : null;
+    if (fileLink) {
+      const document = await loadDocument(fileLink, signal, false);
+      remember(url, document);
+      return document;
+    }
     throw new DocumentReadError(
       response.url.includes("google.com")
         ? "Google Drive didn't give the file directly (it may be private or too large to scan). Share the link with the student instead."
@@ -109,7 +121,7 @@ async function loadDocument(
 
 export const readDocument = tool({
   description:
-    "Read the text of a PDF or Word (.docx) file from a link, such as a past paper, marking scheme or syllabus. Works with direct file links and Google Drive / Google Docs share links. Long documents are returned in parts: use the nextOffset value to continue. Scanned PDFs (images only) can't be read.",
+    "Read the text of a PDF or Word (.docx) file from a link, such as a past paper, marking scheme or syllabus. Works with direct file links, Google Drive / Google Docs share links, and download pages (the file offered on the page is read). Long documents are returned in parts: use the nextOffset value to continue. Scanned PDFs (images only) can't be read.",
   execute: async (input, { abortSignal }) => {
     const maxChars = input.maxChars ?? DEFAULT_CHARS;
     const offset = input.offset ?? 0;
