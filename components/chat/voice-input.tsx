@@ -341,7 +341,10 @@ export function VoiceControls({
       <div className="flex items-center gap-1">
         <button
           aria-label="Cancel voice message"
-          className={cn(ghostButton, "size-8 disabled:opacity-40")}
+          className={cn(
+            ghostButton,
+            "size-8 disabled:opacity-40 max-md:size-9"
+          )}
           data-testid="voice-cancel"
           disabled={!recording}
           onClick={onCancel}
@@ -352,7 +355,7 @@ export function VoiceControls({
         <ComposerVoiceButton
           active={recording}
           aria-label={recording ? "Stop and send voice message" : "Sending"}
-          className="disabled:opacity-60"
+          className="disabled:opacity-60 max-md:size-9"
           data-testid="voice-send"
           disabled={!recording}
           onClick={onSend}
@@ -374,7 +377,7 @@ export function MicButton({
   return (
     <ComposerVoiceButton
       active={false}
-      className="disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+      className="disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent max-md:size-9"
       data-testid="voice-button"
       disabled={disabled}
       onClick={onClick}

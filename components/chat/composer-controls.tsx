@@ -53,7 +53,7 @@ const PANEL_OFFSET = 8;
 /*                                   Tools                                    */
 /* -------------------------------------------------------------------------- */
 
-const TOOL_ICONS: Record<ToolGroupId, LucideIcon> = {
+export const TOOL_ICONS: Record<ToolGroupId, LucideIcon> = {
   calculator: CalculatorIcon,
   documents: FileTextIcon,
   study: ListChecksIcon,
@@ -62,7 +62,7 @@ const TOOL_ICONS: Record<ToolGroupId, LucideIcon> = {
   webSearch: GlobeIcon,
 };
 
-function ToolSwitch({ on }: { on: boolean }) {
+export function ToolSwitch({ on }: { on: boolean }) {
   return (
     <span
       aria-hidden="true"

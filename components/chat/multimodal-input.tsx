@@ -68,6 +68,7 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { AnimatedPlaceholder } from "./animated-placeholder";
 import { ReasoningDropdown, ToolsDropdown } from "./composer-controls";
+import { ComposerPlusMenu } from "./composer-plus-menu";
 import { DzdLogoMark, PaperclipIcon } from "./icons";
 import { PreviewAttachment } from "./preview-attachment";
 import {
@@ -618,6 +619,9 @@ function PureMultimodalInput({
   });
   const voiceActive = voice.state !== "idle" || sendingTranscript !== null;
   const startVoice = voice.start;
+  const handlePlusAttach = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
   const handleMicClick = useCallback(() => {
     setSlashOpen(false);
     textareaRef.current?.blur();
@@ -849,18 +853,34 @@ function PureMultimodalInput({
                 key="composer-controls"
                 transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
               >
-                <PromptInputTools>
-                  <AttachmentsButton
-                    fileInputRef={fileInputRef}
-                    selectedModelId={selectedModelId}
-                    status={status}
-                  />
+                <PromptInputTools className="max-md:flex-1 max-md:gap-2">
+                  {/* Phones: attachments, reasoning and tools live in "+". */}
+                  <div className="flex md:hidden">
+                    <ComposerPlusMenu
+                      attachDisabled={status !== "ready"}
+                      attachNote={
+                        hasVision
+                          ? "Images, PDF, Word or text"
+                          : "PDF, Word or text (no images with this model)"
+                      }
+                      onAttach={handlePlusAttach}
+                    />
+                  </div>
+                  <div className="hidden md:flex">
+                    <AttachmentsButton
+                      fileInputRef={fileInputRef}
+                      selectedModelId={selectedModelId}
+                      status={status}
+                    />
+                  </div>
                   <ModelSelectorCompact
                     onModelChange={onModelChange}
                     selectedModelId={selectedModelId}
                   />
-                  <ReasoningDropdown />
-                  <ToolsDropdown />
+                  <div className="hidden md:contents">
+                    <ReasoningDropdown />
+                    <ToolsDropdown />
+                  </div>
                 </PromptInputTools>
 
                 <div className="flex items-center gap-1.5">
@@ -878,7 +898,7 @@ function PureMultimodalInput({
                   ) : (
                     <PromptInputSubmit
                       className={cn(
-                        "h-7 w-7 rounded-xl transition-all duration-200",
+                        "h-7 w-7 rounded-xl transition-all duration-200 max-md:h-9 max-md:w-9 max-md:rounded-full",
                         canSend
                           ? "bg-primary text-primary-foreground hover:bg-primary/85 active:scale-95"
                           : "bg-muted text-muted-foreground/25 cursor-not-allowed"
@@ -1184,7 +1204,7 @@ function PureModelSelectorCompact({
     <ModelSelector onOpenChange={setOpen} open={open}>
       <ModelSelectorTrigger asChild>
         <Button
-          className="h-7 max-w-[200px] justify-between gap-1.5 rounded-lg px-2 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+          className="h-7 min-w-0 max-w-[200px] justify-between gap-1.5 rounded-lg px-2 text-[12px] text-muted-foreground transition-colors hover:text-foreground max-md:h-9 max-md:max-w-full max-md:shrink max-md:rounded-full max-md:bg-foreground/[0.04] max-md:px-3 max-md:text-[13px] max-md:text-foreground/80"
           data-testid="model-selector"
           variant="ghost"
         >
@@ -1314,7 +1334,7 @@ function PureStopButton({
   return (
     <button
       aria-label="Stop generating"
-      className="group relative grid size-8 shrink-0 cursor-pointer place-items-center rounded-full bg-red-500/10 text-red-500 transition-[background-color,transform] duration-200 hover:bg-red-500/18 active:scale-90 dark:bg-red-500/15 dark:hover:bg-red-500/25"
+      className="group relative grid size-8 shrink-0 cursor-pointer place-items-center rounded-full max-md:size-9 bg-red-500/10 text-red-500 transition-[background-color,transform] duration-200 hover:bg-red-500/18 active:scale-90 dark:bg-red-500/15 dark:hover:bg-red-500/25"
       data-testid="stop-button"
       onClick={handleClick}
       title="Stop generating"
