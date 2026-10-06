@@ -1,3 +1,4 @@
+import { FileDownIcon, PrinterIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Artifact } from "@/components/chat/create-artifact";
 import { DiffView } from "@/components/chat/diffview";
@@ -12,6 +13,7 @@ import {
 } from "@/components/chat/icons";
 import { Editor } from "@/components/chat/text-editor";
 import type { Suggestion } from "@/lib/db/schema";
+import { downloadWord, printAsPdf } from "@/lib/export/download";
 import { getSuggestions } from "../actions";
 
 type TextArtifactMetadata = {
@@ -68,6 +70,35 @@ export const textArtifact = new Artifact<"text", TextArtifactMetadata>({
       onClick: ({ content }) => {
         navigator.clipboard.writeText(content);
         toast.success("Copied to clipboard!");
+      },
+    },
+    {
+      description: "Download as Word (.docx)",
+      icon: <FileDownIcon className="size-[18px]" />,
+      isDisabled: ({ content }) => !content.trim(),
+      onClick: async ({ content, title }) => {
+        try {
+          await downloadWord(title, content);
+        } catch {
+          toast.error("Couldn't create the Word file. Please try again.");
+        }
+      },
+    },
+    {
+      description: "Save as PDF (opens the print dialog)",
+      icon: <PrinterIcon className="size-[18px]" />,
+      isDisabled: ({ content }) => !content.trim(),
+      onClick: async ({ content, title }) => {
+        try {
+          await printAsPdf(title, content);
+          toast.message('Choose "Save as PDF" as the printer.');
+        } catch (error) {
+          toast.error(
+            error instanceof Error && error.message.includes("pop-ups")
+              ? error.message
+              : "Couldn't open the print dialog. Please try again."
+          );
+        }
       },
     },
   ],

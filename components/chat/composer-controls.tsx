@@ -2,12 +2,14 @@
 
 import { AnimatePresence, motion, type Transition } from "framer-motion";
 import {
+  CalculatorIcon,
   CheckIcon,
   ChevronDownIcon,
   CloudSunIcon,
   FileTextIcon,
   GlobeIcon,
   LinkIcon,
+  ListChecksIcon,
   type LucideIcon,
   WrenchIcon,
 } from "lucide-react";
@@ -52,7 +54,9 @@ const PANEL_OFFSET = 8;
 /* -------------------------------------------------------------------------- */
 
 const TOOL_ICONS: Record<ToolGroupId, LucideIcon> = {
+  calculator: CalculatorIcon,
   documents: FileTextIcon,
+  study: ListChecksIcon,
   weather: CloudSunIcon,
   webFetch: LinkIcon,
   webSearch: GlobeIcon,

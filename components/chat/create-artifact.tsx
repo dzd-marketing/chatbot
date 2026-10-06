@@ -13,6 +13,8 @@ export type ArtifactActionContext<M = any> = {
   mode: "edit" | "diff";
   metadata: M;
   setMetadata: Dispatch<SetStateAction<M>>;
+  /** The document's title (used for downloads). */
+  title: string;
 };
 
 type ArtifactAction<M = any> = {

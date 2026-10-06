@@ -1,9 +1,13 @@
 import type { InferUITool, UIMessage } from "ai";
 import { z } from "zod";
 import type { ArtifactKind } from "@/components/chat/artifact";
+import type { calculate } from "./ai/tools/calculate";
 import type { createDocument } from "./ai/tools/create-document";
 import type { getWeather } from "./ai/tools/get-weather";
+import type { readDocument } from "./ai/tools/read-document";
 import type { requestSuggestions } from "./ai/tools/request-suggestions";
+import type { shareFiles } from "./ai/tools/share-files";
+import type { createFlashcards, createQuiz } from "./ai/tools/study";
 import type { updateDocument } from "./ai/tools/update-document";
 import type { webFetch, webSearch } from "./ai/tools/web";
 import type { Suggestion } from "./db/schema";
@@ -22,6 +26,11 @@ type requestSuggestionsTool = InferUITool<
 >;
 type webSearchTool = InferUITool<typeof webSearch>;
 type webFetchTool = InferUITool<typeof webFetch>;
+type readDocumentTool = InferUITool<typeof readDocument>;
+type shareFilesTool = InferUITool<typeof shareFiles>;
+type calculateTool = InferUITool<typeof calculate>;
+type createQuizTool = InferUITool<typeof createQuiz>;
+type createFlashcardsTool = InferUITool<typeof createFlashcards>;
 
 export type ChatTools = {
   getWeather: weatherTool;
@@ -30,6 +39,11 @@ export type ChatTools = {
   requestSuggestions: requestSuggestionsTool;
   webSearch: webSearchTool;
   webFetch: webFetchTool;
+  readDocument: readDocumentTool;
+  shareFiles: shareFilesTool;
+  calculate: calculateTool;
+  createQuiz: createQuizTool;
+  createFlashcards: createFlashcardsTool;
 };
 
 export type WaitingStatusData = {

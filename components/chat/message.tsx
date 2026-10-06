@@ -13,15 +13,19 @@ import {
   ToolInput,
   ToolOutput,
 } from "../ai-elements/tool";
+import { Calculation } from "./calculation";
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
 import { DocumentPreview } from "./document-preview";
 import { DzdActivity } from "./dzd-activity";
+import { FileCards, FileCardsSkeleton } from "./file-cards";
+import { Flashcards, FlashcardsSkeleton } from "./flashcards";
 import { FollowUpSuggestions } from "./follow-up-suggestions";
 import { DzdLogoMark } from "./icons";
 import { MessageActions } from "./message-actions";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
+import { Quiz, QuizSkeleton } from "./quiz";
 import { Weather } from "./weather";
 import {
   isResearchPart,
@@ -144,7 +148,11 @@ const PurePreviewMessage = ({
         <PreviewAttachment
           attachment={{
             contentType: attachment.mediaType,
-            name: attachment.filename ?? "file",
+            // The chat input stores the original file name as `name`.
+            name:
+              attachment.filename ??
+              (attachment as { name?: string }).name ??
+              "file",
             url: attachment.url,
           }}
           key={attachment.url}
@@ -401,6 +409,95 @@ const PurePreviewMessage = ({
             )}
           </ToolContent>
         </Tool>
+      );
+    }
+
+    if (type === "tool-createQuiz") {
+      const { toolCallId, state } = part;
+      if (state === "output-available") {
+        // On an error the model fixes the quiz and calls the tool again.
+        return "error" in part.output ? null : (
+          <Quiz
+            key={toolCallId}
+            questions={part.input.questions}
+            title={part.input.title}
+          />
+        );
+      }
+      if (state === "output-error" || !isLoading) {
+        return null;
+      }
+      return (
+        <QuizSkeleton
+          count={part.input?.questions?.length ?? 0}
+          key={toolCallId}
+          title={part.input?.title}
+        />
+      );
+    }
+
+    if (type === "tool-createFlashcards") {
+      const { toolCallId, state } = part;
+      if (state === "output-available") {
+        return (
+          <Flashcards
+            cards={part.input.cards}
+            key={toolCallId}
+            title={part.input.title}
+          />
+        );
+      }
+      if (state === "output-error" || !isLoading) {
+        return null;
+      }
+      return (
+        <FlashcardsSkeleton
+          count={part.input?.cards?.length ?? 0}
+          key={toolCallId}
+          title={part.input?.title}
+        />
+      );
+    }
+
+    if (type === "tool-shareFiles") {
+      const { toolCallId, state } = part;
+      if (state === "output-available") {
+        return <FileCards files={part.output.files} key={toolCallId} />;
+      }
+      if (state === "output-error" || !isLoading) {
+        return null;
+      }
+      return (
+        <FileCardsSkeleton
+          key={toolCallId}
+          titles={(part.input?.files ?? [])
+            .map((file) => file?.title ?? "")
+            .filter(Boolean)}
+        />
+      );
+    }
+
+    if (type === "tool-calculate") {
+      const { toolCallId, state } = part;
+      if (state === "output-available") {
+        return (
+          <Calculation
+            expressions={part.input.expressions}
+            key={toolCallId}
+            results={part.output.results}
+          />
+        );
+      }
+      if (state === "output-error" || !isLoading) {
+        return null;
+      }
+      return (
+        <Calculation
+          expressions={(part.input?.expressions ?? []).filter(
+            (expression): expression is string => !!expression
+          )}
+          key={toolCallId}
+        />
       );
     }
 

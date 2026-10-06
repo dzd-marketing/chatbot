@@ -8,6 +8,8 @@ export const toolGroupIds = [
   "webSearch",
   "webFetch",
   "documents",
+  "study",
+  "calculator",
   "weather",
 ] as const;
 
@@ -17,10 +19,15 @@ export type ToolSettings = Record<ToolGroupId, boolean>;
 
 /** Tools registered in the chat route (app/(chat)/api/chat/route.ts). */
 export type ChatToolName =
+  | "calculate"
   | "createDocument"
+  | "createFlashcards"
+  | "createQuiz"
   | "editDocument"
   | "getWeather"
+  | "readDocument"
   | "requestSuggestions"
+  | "shareFiles"
   | "updateDocument"
   | "webFetch"
   | "webSearch";
@@ -35,19 +42,20 @@ export type ToolGroup = {
 
 export const toolGroups: readonly ToolGroup[] = [
   {
-    description: "Find up-to-date facts, news and sources",
+    description:
+      "Find facts, news and past papers, with checked download links",
     id: "webSearch",
     label: "Web search",
-    tools: ["webSearch"],
+    tools: ["webSearch", "shareFiles"],
   },
   {
-    description: "Open and read links from you or from search",
+    description: "Open web pages, PDF and Word files from links",
     id: "webFetch",
-    label: "Read web pages",
-    tools: ["webFetch"],
+    label: "Read pages & PDFs",
+    tools: ["webFetch", "readDocument"],
   },
   {
-    description: "Write notes, essays, code and sheets in a side panel",
+    description: "Write notes and essays, download as Word or PDF",
     id: "documents",
     label: "Documents",
     tools: [
@@ -56,6 +64,18 @@ export const toolGroups: readonly ToolGroup[] = [
       "updateDocument",
       "requestSuggestions",
     ],
+  },
+  {
+    description: "Interactive MCQ quizzes and flashcards",
+    id: "study",
+    label: "Quizzes & flashcards",
+    tools: ["createQuiz", "createFlashcards"],
+  },
+  {
+    description: "Exact maths, formulas and unit conversions",
+    id: "calculator",
+    label: "Calculator",
+    tools: ["calculate"],
   },
   {
     description: "Current weather for a city",
@@ -67,7 +87,9 @@ export const toolGroups: readonly ToolGroup[] = [
 
 /** Every tool is on until the student switches it off. */
 export const defaultToolSettings: ToolSettings = {
+  calculator: true,
   documents: true,
+  study: true,
   weather: true,
   webFetch: true,
   webSearch: true,

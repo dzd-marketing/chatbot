@@ -23,7 +23,11 @@ import { Shimmer } from "../ai-elements/shimmer";
 
 type MessagePart = ChatMessage["parts"][number];
 type WebSearchPart = Extract<MessagePart, { type: "tool-webSearch" }>;
-type WebFetchPart = Extract<MessagePart, { type: "tool-webFetch" }>;
+/** Reading a web page (webFetch) or a PDF / Word file (readDocument). */
+type WebFetchPart = Extract<
+  MessagePart,
+  { type: "tool-webFetch" } | { type: "tool-readDocument" }
+>;
 export type ResearchPart = ReasoningUIPart | WebSearchPart | WebFetchPart;
 
 const AUTO_CLOSE_DELAY = 1000;
@@ -33,7 +37,11 @@ const REASONING_PREVIEW_CHARS = 280;
 export function isWebToolPart(
   part: MessagePart
 ): part is WebSearchPart | WebFetchPart {
-  return part.type === "tool-webSearch" || part.type === "tool-webFetch";
+  return (
+    part.type === "tool-webSearch" ||
+    part.type === "tool-webFetch" ||
+    part.type === "tool-readDocument"
+  );
 }
 
 /** Parts that belong in the chain of thought when a message used web tools. */
@@ -276,6 +284,8 @@ function FetchStep({
   const host = hostnameOf(url);
   const running = isToolRunning(part);
   const error = toolError(part);
+  const isDocument = part.type === "tool-readDocument";
+  const thing = isDocument ? "document" : "page";
 
   if (running && isLoading) {
     return (
@@ -284,7 +294,9 @@ function FetchStep({
         icon={FileTextIcon}
         label={
           <Shimmer as="span" className="font-medium" duration={1}>
-            {host ? `Reading ${host}` : "Reading page"}
+            {host
+              ? `Reading ${isDocument ? "a document from " : ""}${host}`
+              : `Reading ${thing}`}
           </Shimmer>
         }
         status="active"
@@ -297,7 +309,7 @@ function FetchStep({
       <ChainOfThoughtStep
         className="text-[13px]"
         icon={FileTextIcon}
-        label={`Stopped reading ${host || "page"}`}
+        label={`Stopped reading ${host || thing}`}
         status="pending"
       />
     );
@@ -309,7 +321,7 @@ function FetchStep({
         className="text-[13px]"
         description={error}
         icon={TriangleAlertIcon}
-        label={`Couldn’t open ${host || "page"}`}
+        label={`Couldn’t open ${isDocument ? "the document" : host || thing}`}
         status="complete"
       />
     );
@@ -324,7 +336,11 @@ function FetchStep({
     <ChainOfThoughtStep
       className="text-[13px]"
       icon={FileTextIcon}
-      label={title ? `Read “${title}”` : `Read ${host || "page"}`}
+      label={
+        title
+          ? `Read ${isDocument ? "document " : ""}“${title}”`
+          : `Read ${host || thing}`
+      }
       status="complete"
     >
       {url ? (
@@ -341,6 +357,7 @@ function FetchStep({
 function summarize(parts: ResearchPart[]) {
   let searches = 0;
   let pages = 0;
+  let documents = 0;
   let failures = 0;
   for (const part of parts) {
     if (part.type === "reasoning") {
@@ -350,17 +367,20 @@ function summarize(parts: ResearchPart[]) {
       failures += 1;
     } else if (part.type === "tool-webSearch") {
       searches += 1;
+    } else if (part.type === "tool-readDocument") {
+      documents += 1;
     } else {
       pages += 1;
     }
   }
 
-  if (searches === 0 && pages === 0) {
+  if (searches === 0 && pages === 0 && documents === 0) {
     return failures > 0 ? "Web search unavailable" : "Researched the web";
   }
   const details = [
     searches > 0 ? plural(searches, "search", "searches") : null,
     pages > 0 ? `${plural(pages, "page", "pages")} read` : null,
+    documents > 0 ? `${plural(documents, "document", "documents")} read` : null,
   ].filter(Boolean);
   return `Researched the web · ${details.join(", ")}`;
 }
@@ -369,6 +389,9 @@ function activeLabel(parts: ResearchPart[], isLoading: boolean) {
   const current = [...parts].reverse().find((p) => isPartActive(p, isLoading));
   if (current?.type === "tool-webFetch") {
     return "Reading sources…";
+  }
+  if (current?.type === "tool-readDocument") {
+    return "Reading the document…";
   }
   if (current?.type === "reasoning") {
     return "Thinking…";

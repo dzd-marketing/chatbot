@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
+import {
+  DocumentReadError,
+  detectDocumentKind,
+  extractDocumentText,
+} from "@/lib/documents/extract";
 
 /** Images are scaled down in the browser first (lib/image-compress.ts). */
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
@@ -23,6 +28,77 @@ const FileSchema = z.object({
       message: "Please upload a JPEG or PNG image.",
     }),
 });
+
+/**
+ * Text kept from an uploaded document (about 40-60 pages). Longer files are
+ * cut here; the chat route trims further per model.
+ */
+const MAX_DOCUMENT_CHARS = 150_000;
+
+const isImage = (file: Blob) => file.type.startsWith("image/");
+
+const stripControlCharacters = (text: string) =>
+  Array.from(text)
+    .filter((character) => character.charCodeAt(0) >= 32)
+    .join("");
+
+/**
+ * PDF, Word and text files are turned into text right away, and the text is
+ * returned as a `text/plain` data URL that travels with the message. The
+ * file itself isn't stored, so no Blob store is needed and big PDFs don't
+ * hit Vercel's request size limit later.
+ */
+async function handleDocument(file: Blob) {
+  const name =
+    stripControlCharacters(
+      file instanceof File && file.name ? file.name : "document"
+    )
+      .replace(/["<>\\/]/g, "_")
+      .slice(-100) || "document";
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json(
+      {
+        error:
+          "This file is too large. Please choose one under 4 MB, or upload only the pages you need.",
+      },
+      { status: 413 }
+    );
+  }
+  const data = new Uint8Array(await file.arrayBuffer());
+  const kind = detectDocumentKind({ data, mediaType: file.type, name });
+  if (kind === "unsupported") {
+    return NextResponse.json(
+      {
+        error:
+          "Please upload an image (JPEG or PNG), a PDF, a Word (.docx) file or a text file.",
+      },
+      { status: 400 }
+    );
+  }
+  try {
+    const { pages, text } = await extractDocumentText({
+      data,
+      mediaType: file.type,
+      name,
+    });
+    const kept =
+      text.length > MAX_DOCUMENT_CHARS
+        ? `${text.slice(0, MAX_DOCUMENT_CHARS)}\n[… the rest of the document was too long to attach.]`
+        : text;
+    return NextResponse.json({
+      characters: text.length,
+      contentType: "text/plain",
+      pages,
+      pathname: name,
+      url: `data:text/plain;charset=utf-8;base64,${Buffer.from(kept, "utf8").toString("base64")}`,
+    });
+  } catch (error) {
+    if (error instanceof DocumentReadError) {
+      return NextResponse.json({ error: error.message }, { status: 422 });
+    }
+    throw error;
+  }
+}
 
 /** Don't keep the student waiting if Blob storage is slow or unreachable. */
 const BLOB_TIMEOUT_MS = 15_000;
@@ -77,7 +153,7 @@ export async function POST(request: Request) {
 
   if (!session) {
     return NextResponse.json(
-      { error: "Please sign in again to upload images." },
+      { error: "Please sign in again to upload files." },
       { status: 401 }
     );
   }
@@ -92,6 +168,10 @@ export async function POST(request: Request) {
 
     if (!(file instanceof Blob)) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+    }
+
+    if (!isImage(file)) {
+      return await handleDocument(file);
     }
 
     const validatedFile = FileSchema.safeParse({ file });
@@ -129,11 +209,11 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error(
-      "Image upload failed:",
+      "Upload failed:",
       error instanceof Error ? error.message : error
     );
     return NextResponse.json(
-      { error: "Couldn't upload the image. Please try again." },
+      { error: "Couldn't upload the file. Please try again." },
       { status: 500 }
     );
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import equal from "fast-deep-equal";
+import { FileDownIcon, PrinterIcon } from "lucide-react";
 import {
   type MouseEvent,
   memo,
@@ -8,10 +9,13 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
+import { toast } from "sonner";
 import useSWR from "swr";
 import { useArtifact } from "@/hooks/use-artifact";
 import type { Document } from "@/lib/db/schema";
+import { downloadWord, printAsPdf } from "@/lib/export/download";
 import { cn, fetcher } from "@/lib/utils";
 import type { ArtifactKind, UIArtifact } from "./artifact";
 import { CodeEditor } from "./code-editor";
@@ -116,19 +120,91 @@ export function DocumentPreview({
     return <LoadingSkeleton artifactKind={artifact.kind} />;
   }
 
+  // The newest saved version is what gets downloaded.
+  const latest = documents?.at(-1);
+
   return (
-    <div className="relative w-full max-w-[450px] cursor-pointer">
-      <HitboxLayer
-        hitboxRef={hitboxRef}
-        result={result}
-        setArtifact={setArtifact}
-      />
-      <DocumentHeader
-        isStreaming={artifact.status === "streaming"}
-        kind={document.kind}
-        title={document.title}
-      />
-      <DocumentContent document={document} />
+    <div className="w-full max-w-[450px]">
+      <div className="relative w-full cursor-pointer">
+        <HitboxLayer
+          hitboxRef={hitboxRef}
+          result={result}
+          setArtifact={setArtifact}
+        />
+        <DocumentHeader
+          isStreaming={artifact.status === "streaming"}
+          kind={document.kind}
+          title={document.title}
+        />
+        <DocumentContent document={document} />
+      </div>
+      {latest?.kind === "text" && latest.content ? (
+        <DocumentDownloads content={latest.content} title={latest.title} />
+      ) : null}
+    </div>
+  );
+}
+
+function DocumentDownloads({
+  content,
+  title,
+}: {
+  content: string;
+  title: string;
+}) {
+  const [busy, setBusy] = useState<"word" | "pdf" | null>(null);
+
+  const handleWord = useCallback(async () => {
+    setBusy("word");
+    try {
+      await downloadWord(title, content);
+    } catch {
+      toast.error("Couldn't create the Word file. Please try again.");
+    } finally {
+      setBusy(null);
+    }
+  }, [content, title]);
+
+  const handlePdf = useCallback(async () => {
+    setBusy("pdf");
+    try {
+      await printAsPdf(title, content);
+      toast.message('Choose "Save as PDF" as the printer.');
+    } catch (error) {
+      toast.error(
+        error instanceof Error && error.message.includes("pop-ups")
+          ? error.message
+          : "Couldn't open the print dialog. Please try again."
+      );
+    } finally {
+      setBusy(null);
+    }
+  }, [content, title]);
+
+  const buttonClass =
+    "inline-flex h-8 items-center gap-1.5 rounded-lg border border-border/50 bg-card px-3 font-medium text-[13px] text-foreground transition-colors hover:bg-muted disabled:opacity-60";
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <span className="mr-0.5 text-[12px] text-muted-foreground">Download</span>
+      <button
+        className={buttonClass}
+        disabled={busy !== null}
+        onClick={handleWord}
+        type="button"
+      >
+        <FileDownIcon className="size-3.5 text-sky-600 dark:text-sky-400" />
+        {busy === "word" ? "Preparing…" : "Word"}
+      </button>
+      <button
+        className={buttonClass}
+        disabled={busy !== null}
+        onClick={handlePdf}
+        type="button"
+      >
+        <PrinterIcon className="size-3.5 text-red-600 dark:text-red-400" />
+        {busy === "pdf" ? "Opening…" : "PDF"}
+      </button>
     </div>
   );
 }

@@ -100,6 +100,7 @@ function PureArtifactActions({
     metadata,
     mode,
     setMetadata,
+    title: artifact.title,
   };
 
   return (
@@ -140,6 +141,9 @@ export const ArtifactActions = memo(
       return false;
     }
     if (prevProps.artifact.content !== nextProps.artifact.content) {
+      return false;
+    }
+    if (prevProps.artifact.title !== nextProps.artifact.title) {
       return false;
     }
     if (prevProps.mode !== nextProps.mode) {

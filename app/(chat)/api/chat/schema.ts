@@ -7,7 +7,9 @@ const textPartSchema = z.object({
 });
 
 const filePartSchema = z.object({
-  mediaType: z.enum(["image/jpeg", "image/png"]),
+  // text/plain: an uploaded PDF/Word/text file, already turned into text
+  // by /api/files/upload (the original name is kept in `name`).
+  mediaType: z.enum(["image/jpeg", "image/png", "text/plain"]),
   name: z.string().min(1).max(100),
   type: z.enum(["file"]),
   url: z.url(),
@@ -37,7 +39,9 @@ export const postRequestBodySchema = z.object({
   // The Tools menu (lib/ai/tool-groups.ts). Missing tools stay on.
   tools: z
     .object({
+      calculator: z.boolean().optional(),
       documents: z.boolean().optional(),
+      study: z.boolean().optional(),
       weather: z.boolean().optional(),
       webFetch: z.boolean().optional(),
       webSearch: z.boolean().optional(),

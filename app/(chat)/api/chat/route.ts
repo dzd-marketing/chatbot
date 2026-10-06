@@ -32,10 +32,14 @@ import { getLanguageModel } from "@/lib/ai/providers";
 import { createPrepareStep, MAX_STEPS } from "@/lib/ai/step-limits";
 import { generateFollowUpSuggestions } from "@/lib/ai/suggestions";
 import { activeToolNames, resolveToolSettings } from "@/lib/ai/tool-groups";
+import { calculate } from "@/lib/ai/tools/calculate";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
+import { readDocument } from "@/lib/ai/tools/read-document";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
+import { shareFiles } from "@/lib/ai/tools/share-files";
+import { createFlashcards, createQuiz } from "@/lib/ai/tools/study";
 import { updateDocument } from "@/lib/ai/tools/update-document";
 import { webFetch, webSearch } from "@/lib/ai/tools/web";
 import { isProductionEnvironment, isTestEnvironment } from "@/lib/constants";
@@ -50,6 +54,7 @@ import {
   updateMessage,
 } from "@/lib/db/queries";
 import type { DBMessage } from "@/lib/db/schema";
+import { inlineDocumentAttachments } from "@/lib/documents/attachments";
 import { ChatbotError } from "@/lib/errors";
 import type {
   ChatMessage,
@@ -234,8 +239,15 @@ export async function POST(request: Request) {
     const isDzd = isDzdModel(chatModel);
     const builtInWebSearch = capabilities?.builtInWebSearch === true;
 
+    // Uploaded PDF / Word / text files become text the model can read.
+    // DZD Learn AI runs on CPU, so it gets a much smaller share.
     const modelMessages = await convertToModelMessages(
-      isDzd ? recentHistory(uiMessages, DZD_HISTORY_MESSAGES) : uiMessages
+      inlineDocumentAttachments(
+        isDzd ? recentHistory(uiMessages, DZD_HISTORY_MESSAGES) : uiMessages,
+        isDzd
+          ? { perDocumentChars: 8000, totalChars: 12_000 }
+          : { perDocumentChars: 60_000, totalChars: 120_000 }
+      )
     );
 
     const stream = createUIMessageStream({
@@ -342,9 +354,11 @@ export async function POST(request: Request) {
         const enabledTools = supportsTools ? activeToolNames(toolSettings) : [];
         const instructions = systemPrompt({
           builtInWebSearch,
+          calculator: toolSettings.calculator,
           documents: toolSettings.documents,
           pageReading: toolSettings.webFetch,
           requestHints,
+          study: toolSettings.study,
           supportsTools,
           webSearch: toolSettings.webSearch,
         });
@@ -395,18 +409,23 @@ export async function POST(request: Request) {
             isEnabled: isProductionEnvironment,
           },
           tools: {
+            calculate,
             createDocument: createDocument({
               dataStream,
               modelId: chatModel,
               session,
             }),
+            createFlashcards,
+            createQuiz,
             editDocument: editDocument({ dataStream, session }),
             getWeather,
+            readDocument,
             requestSuggestions: requestSuggestions({
               dataStream,
               modelId: chatModel,
               session,
             }),
+            shareFiles,
             updateDocument: updateDocument({
               dataStream,
               modelId: chatModel,

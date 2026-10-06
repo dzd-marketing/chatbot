@@ -69,6 +69,16 @@ import {
 import { SuggestedActions } from "./suggested-actions";
 import type { VisibilityType } from "./visibility-selector";
 
+/** Documents are read as text on the server (api/files/upload). */
+const DOCUMENT_ACCEPT =
+  ".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown";
+const DOCUMENT_EXTENSIONS = /\.(pdf|docx|txt|md|markdown)$/i;
+const MAX_DOCUMENT_BYTES = 4 * 1024 * 1024;
+
+const isImageFile = (file: File) =>
+  file.type.startsWith("image/") ||
+  /\.(jpe?g|png|webp|gif|heic|heif|bmp)$/i.test(file.name);
+
 function setCookie(name: string, value: string) {
   const maxAge = 60 * 60 * 24 * 365;
   // biome-ignore lint/suspicious/noDocumentCookie: needed for client-side cookie setting
@@ -130,6 +140,14 @@ function PureMultimodalInput({
 }) {
   const router = useRouter();
   const { setTheme, resolvedTheme } = useTheme();
+  const { capabilities: modelCapabilities, model: currentModel } =
+    useChatModel(selectedModelId);
+  const hasVision = modelCapabilities?.vision ?? false;
+  // Read inside the stable upload callback.
+  const hasVisionRef = useRef(hasVision);
+  hasVisionRef.current = hasVision;
+  const modelNameRef = useRef("This model");
+  modelNameRef.current = currentModel?.name ?? "This model";
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
   const hasAutoFocused = useRef(false);
@@ -287,13 +305,31 @@ function PureMultimodalInput({
   ]);
 
   const uploadFile = useCallback(async (original: File) => {
-    let file: File;
-    try {
-      // Smaller, faster uploads; also converts WebP and similar to JPEG.
-      file = await prepareImageForUpload(original);
-    } catch {
+    let file: File = original;
+    if (isImageFile(original)) {
+      if (!hasVisionRef.current) {
+        toast.error(
+          `${modelNameRef.current} can't read images. Choose a model with the eye icon, or attach a PDF or Word file instead.`
+        );
+        return;
+      }
+      try {
+        // Smaller, faster uploads; also converts WebP and similar to JPEG.
+        file = await prepareImageForUpload(original);
+      } catch {
+        toast.error(
+          `Couldn't open "${original.name}". Please use a JPEG or PNG image.`
+        );
+        return;
+      }
+    } else if (!DOCUMENT_EXTENSIONS.test(original.name)) {
       toast.error(
-        `Couldn't open "${original.name}". Please use a JPEG or PNG image.`
+        `"${original.name}" isn't supported. Attach a PDF, Word (.docx) or text file${hasVisionRef.current ? ", or an image" : ""}.`
+      );
+      return;
+    } else if (original.size > MAX_DOCUMENT_BYTES) {
+      toast.error(
+        `"${original.name}" is over 4 MB. Please upload a smaller file, or only the pages you need.`
       );
       return;
     }
@@ -323,7 +359,7 @@ function PureMultimodalInput({
       const { error } = await response
         .json()
         .catch(() => ({ error: undefined }));
-      toast.error(error || "Couldn't upload the image. Please try again.");
+      toast.error(error || "Couldn't upload the file. Please try again.");
     } catch {
       toast.error("Failed to upload file, please try again!");
     }
@@ -508,7 +544,7 @@ function PureMultimodalInput({
       ) : null}
 
       <input
-        accept="image/*"
+        accept={hasVision ? `image/*,${DOCUMENT_ACCEPT}` : DOCUMENT_ACCEPT}
         className="pointer-events-none fixed -top-4 -left-4 size-0.5 opacity-0"
         multiple
         onChange={handleFileChange}
@@ -725,15 +761,10 @@ function PureAttachmentsButton({
 
   const button = (
     <Button
-      aria-label="Attach images"
-      className={cn(
-        "h-7 w-7 rounded-lg border border-border/40 p-1 transition-colors",
-        hasVision
-          ? "text-foreground hover:border-border hover:text-foreground"
-          : "text-muted-foreground/30 cursor-not-allowed"
-      )}
+      aria-label="Attach files"
+      className="h-7 w-7 rounded-lg border border-border/40 p-1 text-foreground transition-colors hover:border-border hover:text-foreground"
       data-testid="attachments-button"
-      disabled={status !== "ready" || !hasVision}
+      disabled={status !== "ready"}
       onClick={handleClick}
       variant="ghost"
     >
@@ -742,7 +773,7 @@ function PureAttachmentsButton({
   );
 
   // A disabled button gets no pointer events, so the tooltip is attached
-  // to a wrapper. Explains why attaching isn't possible.
+  // to a wrapper.
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -750,8 +781,8 @@ function PureAttachmentsButton({
       </TooltipTrigger>
       <TooltipContent side="top" sideOffset={8}>
         {hasVision
-          ? "Attach images"
-          : `${model?.name ?? "This model"} can't read images. Choose a model with the eye icon.`}
+          ? "Attach images, PDF, Word or text files"
+          : `Attach PDF, Word or text files. ${model?.name ?? "This model"} can't read images; choose a model with the eye icon for photos.`}
       </TooltipContent>
     </Tooltip>
   );
