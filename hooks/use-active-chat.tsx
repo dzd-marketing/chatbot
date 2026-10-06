@@ -24,9 +24,9 @@ import { getChatHistoryPaginationKey } from "@/components/chat/sidebar-history";
 import { toast } from "@/components/chat/toast";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
 import { useAutoResume } from "@/hooks/use-auto-resume";
-import { useChatModels } from "@/hooks/use-chat-models";
 import {
   DEFAULT_CHAT_MODEL,
+  dzdLearnModel,
   type ReasoningLevel,
   reasoningLevels,
   resolveReasoningLevel,
@@ -58,7 +58,6 @@ type ActiveChatContextValue = {
   isLoading: boolean;
   votes: Vote[] | undefined;
   currentModelId: string;
-  setCurrentModelId: (id: string) => void;
   showCreditCardAlert: boolean;
   setShowCreditCardAlert: Dispatch<SetStateAction<boolean>>;
   /** Student's Web search toggle. On by default. */
@@ -94,11 +93,8 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
   const chatId = chatIdFromUrl ?? newChatIdRef.current;
 
-  const [currentModelId, setCurrentModelId] = useState(DEFAULT_CHAT_MODEL);
-  const currentModelIdRef = useRef(currentModelId);
-  useEffect(() => {
-    currentModelIdRef.current = currentModelId;
-  }, [currentModelId]);
+  // One assistant, DZD Learn AI; the server picks the model for each reply.
+  const currentModelId = DEFAULT_CHAT_MODEL;
 
   const [input, setInput] = useState("");
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
@@ -139,11 +135,8 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   )
     ? (storedReasoning as ReasoningLevel)
     : undefined;
-  // Includes models discovered by the server (NVIDIA), so the reasoning
-  // control follows whichever model is selected.
-  const { models: selectableModels } = useChatModels();
   const reasoningLevel = resolveReasoningLevel(
-    selectableModels.find((model) => model.id === currentModelId),
+    dzdLearnModel,
     reasoningPreference
   );
 
@@ -249,7 +242,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
             ...(isToolApprovalContinuation
               ? { messages: request.messages }
               : { message: lastMessage }),
-            selectedChatModel: currentModelIdRef.current,
+            selectedChatModel: DEFAULT_CHAT_MODEL,
             selectedVisibilityType: visibility,
             tools: toolSettingsRef.current,
             webSearch: toolSettingsRef.current.webSearch,
@@ -295,18 +288,6 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [chatId, isNewChat, setMessages]);
-
-  useEffect(() => {
-    if (chatData && !isNewChat) {
-      const cookieModel = document.cookie
-        .split("; ")
-        .find((row) => row.startsWith("chat-model="))
-        ?.split("=")[1];
-      if (cookieModel) {
-        setCurrentModelId(decodeURIComponent(cookieModel));
-      }
-    }
-  }, [chatData, isNewChat]);
 
   const hasAppendedQueryRef = useRef(false);
   useEffect(() => {
@@ -355,7 +336,6 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       reasoningLevel,
       regenerate,
       sendMessage,
-      setCurrentModelId,
       setInput,
       setMessages,
       setReasoningLevel,
@@ -383,7 +363,6 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       isNewChat,
       isLoading,
       votes,
-      currentModelId,
       showCreditCardAlert,
       toolSettings,
       setToolEnabled,

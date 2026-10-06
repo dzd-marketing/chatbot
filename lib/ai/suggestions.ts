@@ -1,7 +1,6 @@
 import "server-only";
 
 import { generateText } from "ai";
-import { titleModel } from "./models";
 import { getTitleModel } from "./providers";
 
 const SUGGESTION_COUNT = 3;
@@ -52,8 +51,8 @@ export function parseSuggestions(text: string): string[] {
 }
 
 /**
- * Generates follow-up suggestions for the end of an answer. Uses the fast
- * Z.AI title model with thinking off. Never throws: returns [] on timeout,
+ * Generates follow-up suggestions for the end of an answer, with the quick
+ * helper model (thinking off). Never throws: returns [] on timeout,
  * abort or any provider error so the chat reply is unaffected.
  */
 export async function generateFollowUpSuggestions({
@@ -81,9 +80,6 @@ export async function generateFollowUpSuggestions({
       maxRetries: 0,
       model: getTitleModel(),
       prompt: `Student's message:\n${question.slice(0, QUESTION_EXCERPT_CHARS) || "(no text, e.g. an image)"}\n\nDZD AI's answer:\n${answer.slice(0, ANSWER_EXCERPT_CHARS)}`,
-      ...(titleModel.provider === "zai" && {
-        providerOptions: { zai: { thinking: { type: "disabled" } } },
-      }),
     });
     return parseSuggestions(text);
   } catch {

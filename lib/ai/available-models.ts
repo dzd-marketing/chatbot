@@ -1,52 +1,20 @@
 import "server-only";
 
 import {
-  allowedModelIds,
   type ChatModel,
-  chatModels,
+  dzdLearnModel,
   getCapabilities,
   type ModelCapabilities,
 } from "./models";
-import {
-  getNvidiaModels,
-  isNvidiaModel,
-  NVIDIA_MODEL_PREFIX,
-  nvidiaCapabilities,
-} from "./nvidia";
 
 /**
- * Server-side model registry: the curated models in lib/ai/models.ts plus
- * the NVIDIA chat models discovered at runtime (lib/ai/nvidia.ts).
+ * Students only ever get DZD Learn AI; the server routes each reply to a
+ * model (lib/ai/router.ts). Model ids from older clients are ignored.
  */
-
-/** The curated or discovered model with this ID, if it may be used. */
-export async function findChatModel(
-  modelId: string
-): Promise<ChatModel | undefined> {
-  if (allowedModelIds.has(modelId)) {
-    return chatModels.find((model) => model.id === modelId);
-  }
-  if (isNvidiaModel(modelId)) {
-    const nvidiaModels = await getNvidiaModels();
-    return nvidiaModels.find((model) => model.id === modelId);
-  }
+export function findChatModel(_modelId: string): ChatModel {
+  return dzdLearnModel;
 }
 
-/** Capabilities of every selectable model, keyed by model ID. */
-export async function getAllCapabilities(): Promise<
-  Record<string, ModelCapabilities>
-> {
-  const [curated, nvidiaModels] = await Promise.all([
-    getCapabilities(),
-    getNvidiaModels(),
-  ]);
-  return {
-    ...Object.fromEntries(
-      nvidiaModels.map((model) => [
-        model.id,
-        nvidiaCapabilities(model.id.slice(NVIDIA_MODEL_PREFIX.length)),
-      ])
-    ),
-    ...curated,
-  };
+export function getAllCapabilities(): Record<string, ModelCapabilities> {
+  return getCapabilities();
 }

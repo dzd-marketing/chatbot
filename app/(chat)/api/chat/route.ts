@@ -13,22 +13,16 @@ import { checkBotId } from "botid/server";
 import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
 import { auth } from "@/app/(auth)/auth";
-import { findChatModel, getAllCapabilities } from "@/lib/ai/available-models";
+import type { DzdStreamHooks } from "@/lib/ai/dzd";
 import {
-  DZD_HISTORY_MESSAGES,
-  type DzdStreamHooks,
-  getDzdMaxTokens,
-  isDzdModel,
-} from "@/lib/ai/dzd";
-import {
-  chatModels,
-  DEFAULT_CHAT_MODEL,
-  getModelAvailability,
+  DZD_LEARN_MODEL_ID,
+  dzdLearnCapabilities,
+  dzdLearnModel,
   resolveReasoningLevel,
 } from "@/lib/ai/models";
-import { isNvidiaModel, nvidiaErrorMessage } from "@/lib/ai/nvidia";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { getLanguageModel } from "@/lib/ai/providers";
+import { describeError, routerErrorMessage } from "@/lib/ai/router";
 import { createPrepareStep, MAX_STEPS } from "@/lib/ai/step-limits";
 import { generateFollowUpSuggestions } from "@/lib/ai/suggestions";
 import { activeToolNames, resolveToolSettings } from "@/lib/ai/tool-groups";
@@ -71,9 +65,12 @@ import { voiceMessagesForModel } from "@/lib/voice-message";
 import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
-// DZD Learn AI runs on CPU and may search the web first, so a reply can take
-// a few minutes (its upstream limit is DZD_TIMEOUT_MS in lib/ai/dzd.ts).
+// Replies may browse the web for a few minutes, and the last-resort model
+// runs on CPU (see lib/ai/router.ts and lib/ai/dzd.ts).
 export const maxDuration = 300;
+
+/** A reply must have started by then, leaving time to finish and save. */
+const ROUTING_DEADLINE_MS = 285_000;
 
 const HEALTH_CHECK_DELAY_MS = 9000;
 
@@ -81,13 +78,6 @@ function isModelStreamActivity(chunk: { type: string }) {
   return !["start", "start-step", "finish-step", "finish", "raw"].includes(
     chunk.type
   );
-}
-
-/** The latest turns, starting with a user message. */
-function recentHistory(messages: ChatMessage[], limit: number) {
-  const recent = messages.slice(-limit);
-  const firstUser = recent.findIndex((m) => m.role === "user");
-  return firstUser > 0 ? recent.slice(firstUser) : recent;
 }
 
 function getStreamContext() {
@@ -118,7 +108,6 @@ export async function POST(request: Request) {
       message,
       messages,
       reasoning,
-      selectedChatModel,
       selectedVisibilityType,
       tools: requestedTools,
       webSearch: webSearchRequested,
@@ -137,9 +126,10 @@ export async function POST(request: Request) {
       return new ChatbotError("unauthorized:chat").toResponse();
     }
 
-    // Curated models plus NVIDIA models discovered at runtime.
-    const requestedModel = await findChatModel(selectedChatModel);
-    const chatModel = requestedModel ? selectedChatModel : DEFAULT_CHAT_MODEL;
+    // Always DZD Learn AI: the model behind each reply is picked on the
+    // server (lib/ai/router.ts). A model id sent by an older client is
+    // ignored.
+    const chatModel = DZD_LEARN_MODEL_ID;
 
     // No message limits: students can chat as much as they need.
 
@@ -226,33 +216,24 @@ export async function POST(request: Request) {
       });
     }
 
-    const modelConfig =
-      requestedModel ?? chatModels.find((m) => m.id === chatModel);
-    const modelCapabilities = await getAllCapabilities();
-    const capabilities = modelCapabilities[chatModel];
-    const isReasoningModel = capabilities?.reasoning === true;
-    const supportsTools = capabilities?.tools === true;
+    const modelConfig = dzdLearnModel;
+    const supportsTools = dzdLearnCapabilities.tools;
     // The student's Tools menu; older clients only send `webSearch`.
     const toolSettings = resolveToolSettings({
       webSearch: webSearchRequested,
       ...requestedTools,
     });
+    // Fast (thinking off) or Thinking.
     const reasoningLevel = resolveReasoningLevel(modelConfig, reasoning);
-    const isDzd = isDzdModel(chatModel);
-    const builtInWebSearch = capabilities?.builtInWebSearch === true;
 
     // Uploaded PDF / Word / text files become text the model can read.
-    // DZD Learn AI runs on CPU, so it gets a much smaller share.
     // Voice messages: the model reads the transcript, not the audio.
+    // (The CPU fallback model gets a shorter version; see the router.)
     const modelMessages = await convertToModelMessages(
-      inlineDocumentAttachments(
-        voiceMessagesForModel(
-          isDzd ? recentHistory(uiMessages, DZD_HISTORY_MESSAGES) : uiMessages
-        ),
-        isDzd
-          ? { perDocumentChars: 8000, totalChars: 12_000 }
-          : { perDocumentChars: 60_000, totalChars: 120_000 }
-      )
+      inlineDocumentAttachments(voiceMessagesForModel(uiMessages), {
+        perDocumentChars: 60_000,
+        totalChars: 120_000,
+      })
     );
 
     const stream = createUIMessageStream({
@@ -289,20 +270,7 @@ export async function POST(request: Request) {
         writeWaitingStatus("waiting", "Waiting...");
 
         healthCheckTimer = setTimeout(() => {
-          getModelAvailability(chatModel)
-            .then((availability) => {
-              if (availability === "impacted") {
-                writeWaitingStatus(
-                  "health",
-                  `${modelName} may be slow or unavailable right now...`
-                );
-              } else {
-                writeWaitingStatus("still-waiting", "Still waiting...");
-              }
-            })
-            .catch(() => {
-              writeWaitingStatus("still-waiting", "Still waiting...");
-            });
+          writeWaitingStatus("still-waiting", "Still working on it...");
         }, HEALTH_CHECK_DELAY_MS);
 
         const markModelActive = () => {
@@ -358,13 +326,25 @@ export async function POST(request: Request) {
 
         const enabledTools = supportsTools ? activeToolNames(toolSettings) : [];
         const instructions = systemPrompt({
-          builtInWebSearch,
+          builtInWebSearch: false,
           calculator: toolSettings.calculator,
           documents: toolSettings.documents,
           pageReading: toolSettings.webFetch,
           requestHints,
           study: toolSettings.study,
           supportsTools,
+          webSearch: toolSettings.webSearch,
+        });
+        // If the reply falls back to DZD's own model: it searches the web on
+        // its own server and has none of the website's tools.
+        const dzdInstructions = systemPrompt({
+          builtInWebSearch: true,
+          calculator: false,
+          documents: false,
+          pageReading: false,
+          requestHints,
+          study: false,
+          supportsTools: false,
           webSearch: toolSettings.webSearch,
         });
 
@@ -382,15 +362,29 @@ export async function POST(request: Request) {
           // Stop generating when the student presses Stop (or leaves), so
           // the partial reply is saved and no quota is wasted. With Redis
           // resumable streams, replies keep going so they can be resumed.
-          ...((isDzd || !process.env.REDIS_URL) && {
+          ...(!process.env.REDIS_URL && {
             abortSignal: request.signal,
           }),
           instructions,
-          ...(isDzd && {
-            maxOutputTokens: getDzdMaxTokens(),
-          }),
+          // Busy models are handled by the router (next model, then up to
+          // three timed retry rounds), so the SDK doesn't retry on top.
+          maxRetries: 0,
           messages: modelMessages,
-          model: getLanguageModel(chatModel, { dzd: dzdHooks }),
+          model: getLanguageModel(chatModel, {
+            deadline: startedAt + ROUTING_DEADLINE_MS,
+            dzdHooks,
+            dzdInstructions,
+            onEvent(event) {
+              // Never names a model or provider.
+              writeWaitingStatus(
+                "still-waiting",
+                event.type === "retry-wait"
+                  ? "Lots of students are studying right now. Retrying..."
+                  : "Still working on it..."
+              );
+            },
+            reasoningLevel,
+          }),
           onAbort() {
             stopWaitingStatus();
           },
@@ -447,37 +441,41 @@ export async function POST(request: Request) {
 
         dataStream.merge(
           toUIMessageStream({
-            // NVIDIA models have no reasoning control, but if one streams its
-            // thinking, show it.
-            sendReasoning:
-              (isReasoningModel && reasoningLevel !== "off") ||
-              isNvidiaModel(chatModel),
+            // Without this, a failed reply only says "An error occurred.".
+            onError(error) {
+              console.error(`Chat reply failed: ${describeError(error)}`, {
+                chatId: id,
+                vercelId: request.headers.get("x-vercel-id"),
+              });
+              return routerErrorMessage(error);
+            },
+            // Some models always think, even in Fast mode; show it if so.
+            sendReasoning: true,
             stream: result.stream,
           })
         );
 
-        const dzdActivityTask = isDzd
-          ? (async () => {
-              try {
-                await result.finishReason;
-              } catch {
-                /* still mark the activity as finished */
-              }
-              const { activity } = dzd;
-              const hasSteps =
-                activity !== null &&
-                (activity.progress.length > 0 ||
-                  (activity.toolSteps?.length ?? 0) > 0);
-              if (activity && hasSteps) {
-                activity.status = "done";
-                try {
-                  writeDzdActivity();
-                } catch {
-                  /* the stream may already be closed */
-                }
-              }
-            })()
-          : Promise.resolve();
+        // Only writes when the reply came from DZD's own model.
+        const dzdActivityTask = (async () => {
+          try {
+            await result.finishReason;
+          } catch {
+            /* still mark the activity as finished */
+          }
+          const { activity } = dzd;
+          const hasSteps =
+            activity !== null &&
+            (activity.progress.length > 0 ||
+              (activity.toolSteps?.length ?? 0) > 0);
+          if (activity && hasSteps) {
+            activity.status = "done";
+            try {
+              writeDzdActivity();
+            } catch {
+              /* the stream may already be closed */
+            }
+          }
+        })();
 
         // Follow-up suggestions: generated once the answer is complete and
         // written as a persisted data part on the same assistant message.
@@ -579,30 +577,11 @@ export async function POST(request: Request) {
         }
       },
       onError: (error) => {
-        if (
-          error instanceof Error &&
-          error.message?.includes(
-            "AI Gateway requires a valid credit card on file to service requests"
-          )
-        ) {
-          return "AI Gateway requires a valid credit card on file to service requests. Please visit https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card to add a card and unlock your free credits.";
-        }
-        if (isNvidiaModel(chatModel)) {
-          return nvidiaErrorMessage(error);
-        }
-        if (isDzd) {
-          if (
-            error instanceof Error &&
-            error.message.includes("Missing HF_READ_TOKEN")
-          ) {
-            return "DZD Learn AI isn't set up on this server yet. Please choose another model for now.";
-          }
-          if (error instanceof Error && error.name === "DzdTimeoutError") {
-            return "DZD Learn AI took too long to answer. Please try a shorter question, or choose another model.";
-          }
-          return "DZD Learn AI isn't responding right now. Its server may be waking up, so please try again in a minute or choose another model.";
-        }
-        return "Oops, an error occurred!";
+        console.error(`Chat request failed: ${describeError(error)}`, {
+          chatId: id,
+          vercelId: request.headers.get("x-vercel-id"),
+        });
+        return routerErrorMessage(error);
       },
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
     });

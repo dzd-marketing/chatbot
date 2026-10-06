@@ -1,10 +1,8 @@
 "use server";
 
 import { generateText, type UIMessage } from "ai";
-import { cookies } from "next/headers";
 import { auth } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
-import { titleModel } from "@/lib/ai/models";
 import { titlePrompt } from "@/lib/ai/prompts";
 import { getTitleModel } from "@/lib/ai/providers";
 import {
@@ -15,11 +13,6 @@ import {
 } from "@/lib/db/queries";
 import { getTextFromMessage } from "@/lib/utils";
 
-export async function saveChatModelAsCookie(model: string) {
-  const cookieStore = await cookies();
-  cookieStore.set("chat-model", model);
-}
-
 export async function generateTitleFromUserMessage({
   message,
 }: {
@@ -27,12 +20,10 @@ export async function generateTitleFromUserMessage({
 }) {
   const { text } = await generateText({
     instructions: titlePrompt,
+    // The router handles busy models, so the SDK doesn't retry on top.
+    maxRetries: 0,
     model: getTitleModel(),
     prompt: getTextFromMessage(message),
-    // GLM-4.7 thinks by default; a 2-5 word title doesn't need it.
-    ...(titleModel.provider === "zai" && {
-      providerOptions: { zai: { thinking: { type: "disabled" } } },
-    }),
   });
   return text
     .replace(/^[#*"\s]+/, "")

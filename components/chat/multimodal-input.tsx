@@ -4,21 +4,13 @@ import type { UseChatHelpers } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import equal from "fast-deep-equal";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  ArrowUpIcon,
-  BrainIcon,
-  EyeIcon,
-  GlobeIcon,
-  LockIcon,
-  WrenchIcon,
-} from "lucide-react";
+import { ArrowUpIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
   type ChangeEvent,
   type Dispatch,
   memo,
-  type ReactNode,
   type SetStateAction,
   useCallback,
   useEffect,
@@ -27,29 +19,13 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { useLocalStorage, useWindowSize } from "usehooks-ts";
-import {
-  ModelSelector,
-  ModelSelectorContent,
-  ModelSelectorGroup,
-  ModelSelectorInput,
-  ModelSelectorItem,
-  ModelSelectorList,
-  ModelSelectorLogo,
-  ModelSelectorName,
-  ModelSelectorTrigger,
-} from "@/components/ai-elements/model-selector";
 import { useActiveChat } from "@/hooks/use-active-chat";
-import { useChatModel, useChatModels } from "@/hooks/use-chat-models";
+import { useChatModel } from "@/hooks/use-chat-models";
 import {
   useVoiceRecorder,
   type VoiceLanguage,
   type VoiceResult,
 } from "@/hooks/use-voice-recorder";
-import {
-  type ChatModel,
-  DEFAULT_CHAT_MODEL,
-  type ModelCapabilities,
-} from "@/lib/ai/models";
 import { withStoppedReply } from "@/lib/chat/stopped";
 import { prepareImageForUpload } from "@/lib/image-compress";
 import { isExternalUrl, PRIVACY_URL, TERMS_URL } from "@/lib/legal";
@@ -90,25 +66,11 @@ const isImageFile = (file: File) =>
   file.type.startsWith("image/") ||
   /\.(jpe?g|png|webp|gif|heic|heif|bmp)$/i.test(file.name);
 
-function setCookie(name: string, value: string) {
-  const maxAge = 60 * 60 * 24 * 365;
-  // biome-ignore lint/suspicious/noDocumentCookie: needed for client-side cookie setting
-  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}`;
-}
-
 // Website legal pages open in a new tab; in-app placeholders stay in the tab.
 const legalLinkProps = (url: string) =>
   isExternalUrl(url)
     ? { rel: "noopener noreferrer", target: "_blank" as const }
     : {};
-
-// models.dev has no logo for our own model, so show the DZD mark instead.
-function ProviderLogo({ provider }: { provider: string }) {
-  if (provider === "dzd") {
-    return <DzdLogoMark className="size-4" size={16} />;
-  }
-  return <ModelSelectorLogo provider={provider} />;
-}
 
 function PureMultimodalInput({
   chatId,
@@ -123,7 +85,6 @@ function PureMultimodalInput({
   sendMessage,
   className,
   selectedModelId,
-  onModelChange,
   editingMessage,
   onCancelEdit,
   isLoading,
@@ -143,7 +104,6 @@ function PureMultimodalInput({
   className?: string;
   selectedVisibilityType: VisibilityType;
   selectedModelId: string;
-  onModelChange?: (modelId: string) => void;
   editingMessage?: ChatMessage | null;
   onCancelEdit?: () => void;
   isLoading?: boolean;
@@ -873,10 +833,7 @@ function PureMultimodalInput({
                       status={status}
                     />
                   </div>
-                  <ModelSelectorCompact
-                    onModelChange={onModelChange}
-                    selectedModelId={selectedModelId}
-                  />
+                  <DzdLearnLabel />
                   <div className="hidden md:contents">
                     <ReasoningDropdown />
                     <ToolsDropdown />
@@ -1061,255 +1018,21 @@ function PureAttachmentsButton({
 
 const AttachmentsButton = memo(PureAttachmentsButton);
 
-function ModelSelectorOption({
-  capabilities,
-  curated,
-  model,
-  onModelChange,
-  selectedModelId,
-  setOpen,
-}: {
-  capabilities: Record<string, ModelCapabilities> | undefined;
-  curated: boolean;
-  model: ChatModel;
-  onModelChange?: (modelId: string) => void;
-  selectedModelId: string;
-  setOpen: Dispatch<SetStateAction<boolean>>;
-}) {
-  const [logoProvider] = model.id.split("/");
-  const maybeWithTooltip = (icon: ReactNode, label: string) => {
-    if (!curated) {
-      return icon;
-    }
-
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">{icon}</span>
-        </TooltipTrigger>
-        <TooltipContent side="top" sideOffset={8}>
-          {label}
-        </TooltipContent>
-      </Tooltip>
-    );
-  };
-  const handleSelect = useCallback(() => {
-    if (!curated) {
-      return;
-    }
-    onModelChange?.(model.id);
-    setCookie("chat-model", model.id);
-    setOpen(false);
-    setTimeout(() => {
-      document
-        .querySelector<HTMLTextAreaElement>("[data-testid='multimodal-input']")
-        ?.focus();
-    }, 50);
-  }, [curated, model.id, onModelChange, setOpen]);
-
-  const option = (
-    <ModelSelectorItem
-      aria-disabled={!curated}
-      className={cn(
-        "flex w-full transition-colors",
-        model.id === selectedModelId &&
-          "border-b border-dashed border-foreground/50",
-        curated
-          ? "data-[selected=true]:bg-muted data-[selected=true]:text-foreground"
-          : "cursor-not-allowed opacity-40 data-[selected=true]:bg-transparent data-[selected=true]:opacity-60 data-[selected=true]:ring-1 data-[selected=true]:ring-muted-foreground/30 data-[selected=true]:ring-inset"
-      )}
-      keywords={[model.name, model.provider]}
-      onSelect={handleSelect}
-      value={model.id}
+/**
+ * The assistant's name next to the + / attach button. Students always talk
+ * to DZD Learn AI; the server picks the model behind each reply.
+ */
+function DzdLearnLabel() {
+  return (
+    <div
+      className="flex h-7 min-w-0 select-none items-center gap-1.5 px-2 font-medium text-[12px] text-foreground/75 max-md:h-9 max-md:px-2.5 max-md:text-[13px]"
+      data-testid="assistant-label"
     >
-      <ProviderLogo provider={logoProvider} />
-      <ModelSelectorName>{model.name}</ModelSelectorName>
-      {model.provider === "nvidia" ? (
-        <span className="shrink-0 rounded border border-border/50 px-1 py-px font-medium text-[9px] text-muted-foreground uppercase tracking-wide">
-          NVIDIA
-        </span>
-      ) : null}
-      <div className="ml-auto flex items-center gap-2 text-foreground/70">
-        {capabilities?.[model.id]?.tools
-          ? maybeWithTooltip(
-              <WrenchIcon className="size-3.5" />,
-              "Supports tool use"
-            )
-          : null}
-        {capabilities?.[model.id]?.builtInWebSearch
-          ? maybeWithTooltip(
-              <GlobeIcon className="size-3.5" />,
-              "Built-in web search"
-            )
-          : null}
-        {capabilities?.[model.id]?.vision
-          ? maybeWithTooltip(
-              <EyeIcon className="size-3.5" />,
-              "Supports vision"
-            )
-          : null}
-        {capabilities?.[model.id]?.reasoning
-          ? maybeWithTooltip(
-              <BrainIcon className="size-3.5" />,
-              "Supports reasoning"
-            )
-          : null}
-        {!curated && <LockIcon className="size-3 text-muted-foreground/50" />}
-      </div>
-    </ModelSelectorItem>
-  );
-
-  if (curated) {
-    return option;
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div className="w-full cursor-not-allowed">{option}</div>
-      </TooltipTrigger>
-      <TooltipContent side="right" sideOffset={8}>
-        This model is not available in the demo.
-      </TooltipContent>
-    </Tooltip>
+      <DzdLogoMark className="size-4 shrink-0" size={16} />
+      <span className="truncate">DZD Learn AI</span>
+    </div>
   );
 }
-
-function PureModelSelectorCompact({
-  selectedModelId,
-  onModelChange,
-}: {
-  selectedModelId: string;
-  onModelChange?: (modelId: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  // Selectable models: the curated list plus NVIDIA models discovered by
-  // the server (/api/models "extraModels").
-  const {
-    capabilities,
-    demoModels: dynamicModels,
-    models: availableModels,
-  } = useChatModels();
-  const lookupModels = dynamicModels
-    ? [...availableModels, ...dynamicModels]
-    : availableModels;
-
-  const selectedModel =
-    lookupModels.find((m: ChatModel) => m.id === selectedModelId) ??
-    lookupModels.find((m: ChatModel) => m.id === DEFAULT_CHAT_MODEL) ??
-    lookupModels[0];
-  const [provider] = selectedModel.id.split("/");
-
-  return (
-    <ModelSelector onOpenChange={setOpen} open={open}>
-      <ModelSelectorTrigger asChild>
-        <Button
-          className="h-7 min-w-0 max-w-[200px] justify-between gap-1.5 rounded-lg px-2 text-[12px] text-muted-foreground transition-colors hover:text-foreground max-md:h-9 max-md:max-w-full max-md:shrink max-md:rounded-full max-md:bg-foreground/[0.04] max-md:px-3 max-md:text-[13px] max-md:text-foreground/80"
-          data-testid="model-selector"
-          variant="ghost"
-        >
-          {provider ? <ProviderLogo provider={provider} /> : null}
-          <ModelSelectorName>{selectedModel.name}</ModelSelectorName>
-        </Button>
-      </ModelSelectorTrigger>
-      <ModelSelectorContent commandDefaultValue={selectedModel.id}>
-        <ModelSelectorInput placeholder="Search models..." />
-        <ModelSelectorList>
-          {(() => {
-            const curatedIds = new Set(availableModels.map((m) => m.id));
-            // One alphabetical list of everything the student can pick.
-            const sortedAvailable = [...availableModels].sort((a, b) =>
-              a.name.localeCompare(b.name, undefined, {
-                numeric: true,
-                sensitivity: "base",
-              })
-            );
-            const allModels = dynamicModels
-              ? [
-                  ...sortedAvailable,
-                  ...dynamicModels.filter((m) => !curatedIds.has(m.id)),
-                ]
-              : sortedAvailable;
-
-            const grouped: Record<
-              string,
-              { model: ChatModel; curated: boolean }[]
-            > = {};
-            for (const model of allModels) {
-              const key = curatedIds.has(model.id)
-                ? "_available"
-                : model.provider;
-              if (!grouped[key]) {
-                grouped[key] = [];
-              }
-              grouped[key].push({ curated: curatedIds.has(model.id), model });
-            }
-
-            const sortedKeys = Object.keys(grouped).sort((a, b) => {
-              if (a === "_available") {
-                return -1;
-              }
-              if (b === "_available") {
-                return 1;
-              }
-              return a.localeCompare(b);
-            });
-
-            const providerNames: Record<string, string> = {
-              alibaba: "Alibaba",
-              anthropic: "Anthropic",
-              "arcee-ai": "Arcee AI",
-              bytedance: "ByteDance",
-              cohere: "Cohere",
-              deepseek: "DeepSeek",
-              google: "Google",
-              inception: "Inception",
-              kwaipilot: "Kwaipilot",
-              meituan: "Meituan",
-              meta: "Meta",
-              minimax: "MiniMax",
-              mistral: "Mistral",
-              moonshotai: "Moonshot",
-              morph: "Morph",
-              nvidia: "Nvidia",
-              openai: "OpenAI",
-              perplexity: "Perplexity",
-              "prime-intellect": "Prime Intellect",
-              xai: "xAI",
-              xiaomi: "Xiaomi",
-              zai: "Zai",
-            };
-
-            return sortedKeys.map((key) => (
-              <ModelSelectorGroup
-                heading={
-                  key === "_available"
-                    ? "Available"
-                    : (providerNames[key] ?? key)
-                }
-                key={key}
-              >
-                {grouped[key].map(({ model, curated }) => (
-                  <ModelSelectorOption
-                    capabilities={capabilities}
-                    curated={curated}
-                    key={model.id}
-                    model={model}
-                    onModelChange={onModelChange}
-                    selectedModelId={selectedModel.id}
-                    setOpen={setOpen}
-                  />
-                ))}
-              </ModelSelectorGroup>
-            ));
-          })()}
-        </ModelSelectorList>
-      </ModelSelectorContent>
-    </ModelSelector>
-  );
-}
-
-const ModelSelectorCompact = memo(PureModelSelectorCompact);
 
 /**
  * Shown while DZD AI is answering: a red stop square inside a spinning

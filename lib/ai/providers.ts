@@ -1,24 +1,6 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { customProvider, gateway } from "ai";
+import { customProvider } from "ai";
 import { isTestEnvironment } from "../constants";
-import { createDzdModel, type DzdStreamHooks, isDzdModel } from "./dzd";
-import type { ChatModel, ReasoningLevel } from "./models";
-import { titleModel } from "./models";
-import {
-  createNvidiaModel,
-  isNvidiaModel,
-  nvidiaReasoningOptions,
-} from "./nvidia";
-
-const ZAI_MODEL_PREFIX = "zai/";
-
-// Z.AI exposes an OpenAI-compatible Chat Completions API.
-// ZAI_BASE_URL is optional; the default is the standard Z.AI API endpoint.
-const zai = createOpenAICompatible({
-  apiKey: process.env.ZAI_API_KEY,
-  baseURL: process.env.ZAI_BASE_URL ?? "https://api.z.ai/api/paas/v4",
-  name: "zai",
-});
+import { createRoutedModel, type RouterOptions } from "./router";
 
 export const myProvider = isTestEnvironment
   ? (() => {
@@ -35,76 +17,24 @@ export const myProvider = isTestEnvironment
     })()
   : null;
 
+/**
+ * DZD Learn AI. Every request is routed on the server to a model that is
+ * free right now (lib/ai/router.ts); `modelId` is kept for older callers.
+ */
 export function getLanguageModel(
-  modelId: string,
-  options: {
-    /** Progress / telemetry callbacks for DZD Learn AI requests. */
-    dzd?: DzdStreamHooks;
-  } = {}
+  _modelId: string,
+  options: Partial<Omit<RouterOptions, "purpose">> = {}
 ) {
   if (isTestEnvironment && myProvider) {
-    return myProvider.languageModel(modelId);
+    return myProvider.languageModel("chat-model");
   }
-
-  if (modelId.startsWith(ZAI_MODEL_PREFIX)) {
-    if (!process.env.ZAI_API_KEY) {
-      throw new Error("Missing ZAI_API_KEY environment variable");
-    }
-
-    const zaiModelId = modelId.slice(ZAI_MODEL_PREFIX.length);
-    return zai(zaiModelId);
-  }
-
-  if (isDzdModel(modelId)) {
-    // DZD Learn AI (private Hugging Face Space); see lib/ai/dzd.ts.
-    return createDzdModel(options.dzd);
-  }
-
-  if (isNvidiaModel(modelId)) {
-    // NVIDIA API catalog; see lib/ai/nvidia.ts.
-    return createNvidiaModel(modelId);
-  }
-
-  return gateway.languageModel(modelId);
+  return createRoutedModel({ purpose: "chat", ...options });
 }
 
+/** Quick helper calls (chat titles, follow-up suggestions). */
 export function getTitleModel() {
   if (isTestEnvironment && myProvider) {
     return myProvider.languageModel("title-model");
   }
-  return getLanguageModel(titleModel.id);
-}
-
-type ProviderOptions = Record<string, Record<string, unknown>>;
-
-/**
- * Translates the user's reasoning level into provider-specific request
- * options. `level` must already be resolved for the model
- * (see resolveReasoningLevel).
- */
-export function getReasoningProviderOptions(
-  model: ChatModel | undefined,
-  level: ReasoningLevel | undefined
-): ProviderOptions {
-  if (!model?.reasoning || !level) {
-    return {};
-  }
-
-  if (model.id.startsWith(ZAI_MODEL_PREFIX)) {
-    // Z.AI GLM-4.7: thinking can only be switched on or off. Unknown keys
-    // under the provider name are sent as-is in the request body.
-    return {
-      zai: { thinking: { type: level === "off" ? "disabled" : "enabled" } },
-    };
-  }
-
-  if (isNvidiaModel(model.id)) {
-    return nvidiaReasoningOptions(model.reasoning, level) as ProviderOptions;
-  }
-
-  if (model.reasoning.control === "effort" && level !== "off") {
-    return { openai: { reasoningEffort: level } };
-  }
-
-  return {};
+  return createRoutedModel({ purpose: "fast", reasoningLevel: "off" });
 }
