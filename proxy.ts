@@ -29,7 +29,10 @@ export async function proxy(request: NextRequest) {
   const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
   if (!token) {
-    const redirectUrl = encodeURIComponent(new URL(request.url).pathname);
+    // Keep the query string: the Android app's first launch carries
+    // ?app=android&theme=…&q=… and must survive the guest sign-in hop.
+    const { pathname: path, search } = new URL(request.url);
+    const redirectUrl = encodeURIComponent(`${path}${search}`);
 
     return NextResponse.redirect(
       new URL(`${base}/api/auth/guest?redirectUrl=${redirectUrl}`, request.url)

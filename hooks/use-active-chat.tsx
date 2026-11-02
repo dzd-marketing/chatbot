@@ -36,6 +36,7 @@ import {
   type ToolGroupId,
   type ToolSettings,
 } from "@/lib/ai/tool-groups";
+import { isAndroidEmbed } from "@/lib/android-embed";
 import { withStoppedReply } from "@/lib/chat/stopped";
 import type { Vote } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
@@ -306,6 +307,29 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       });
     }
   }, [sendMessage, chatId]);
+
+  // Android app: `?q=` prefills the composer (never auto-sends), then is
+  // removed from the address so a reload doesn't prefill it again.
+  const hasPrefilledRef = useRef(false);
+  useEffect(() => {
+    if (hasPrefilledRef.current || !isAndroidEmbed()) {
+      return;
+    }
+    hasPrefilledRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const question = params.get("q")?.trim();
+    if (!question) {
+      return;
+    }
+    setInput(question.slice(0, 4000));
+    params.delete("q");
+    const search = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`
+    );
+  }, []);
 
   useAutoResume({
     autoResume: !isNewChat && !!chatData,

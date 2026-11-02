@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AndroidEmbed } from "@/components/android-embed";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { EMBED_DETECT_SCRIPT } from "@/lib/android-embed";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
@@ -93,6 +95,12 @@ export default function RootLayout({
     >
       <head>
         <script
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: "Static, runs before paint"
+          dangerouslySetInnerHTML={{
+            __html: EMBED_DETECT_SCRIPT,
+          }}
+        />
+        <script
           // biome-ignore lint/security/noDangerouslySetInnerHtml: "Required"
           dangerouslySetInnerHTML={{
             __html: THEME_COLOR_SCRIPT,
@@ -110,6 +118,7 @@ export default function RootLayout({
             basePath={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/auth`}
           >
             <TooltipProvider>{children}</TooltipProvider>
+            <AndroidEmbed />
           </SessionProvider>
         </ThemeProvider>
       </body>
