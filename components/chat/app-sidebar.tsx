@@ -8,7 +8,7 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
-import { DzdLogoMark } from "@/components/chat/icons";
+import { BrandLogo, BrandMark } from "@/components/chat/icons";
 import {
   getChatHistoryPaginationKey,
   SidebarHistory,
@@ -81,7 +81,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
         <SidebarHeader className="gap-4 px-2 pt-3 pb-3">
           <SidebarMenu>
             <SidebarMenuItem className="flex h-9 flex-row items-center justify-between">
-              <div className="group/logo relative flex items-center justify-center">
+              <div className="group/logo relative hidden items-center justify-center group-data-[collapsible=icon]:flex">
                 <SidebarMenuButton
                   asChild
                   className="size-8 !px-0 items-center justify-center group-data-[collapsible=icon]:group-hover/logo:opacity-0"
@@ -92,7 +92,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                     href="/"
                     onClick={closeMobile}
                   >
-                    <DzdLogoMark size={26} />
+                    <BrandMark size={26} />
                   </Link>
                 </SidebarMenuButton>
                 <Tooltip>
@@ -110,17 +110,12 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                 </Tooltip>
               </div>
               <Link
-                className="mr-auto ml-2.5 flex min-w-0 flex-col gap-0.5 rounded-md leading-none group-data-[collapsible=icon]:hidden"
+                aria-label="TheStudent home"
+                className="mr-auto ml-1 flex min-w-0 items-center rounded-md group-data-[collapsible=icon]:hidden"
                 href="/"
                 onClick={closeMobile}
-                tabIndex={-1}
               >
-                <span className="truncate font-semibold text-[15px] text-foreground tracking-tight">
-                  The<span className="text-brand-ink">Student</span>
-                </span>
-                <span className="truncate text-[11px] text-sidebar-foreground/80">
-                  with TheStudent AI
-                </span>
+                <BrandLogo height={34} priority />
               </Link>
               <div className="group-data-[collapsible=icon]:hidden">
                 <SidebarTrigger className="size-8 rounded-lg text-sidebar-foreground/70 transition-colors duration-150 hover:bg-sidebar-accent hover:text-foreground" />

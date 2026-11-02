@@ -1,3 +1,6 @@
+import Image from "next/image";
+import { cn } from "@/lib/utils";
+
 export const BotIcon = () => (
   <svg
     height="16"
@@ -51,14 +54,63 @@ export const AttachmentIcon = () => (
 );
 
 /**
- * TheStudent brand mark: green sound-wave bars with two sparkles, drawn as an
- * inline SVG (a vector rebuild of public/brand/thestudent-icon.png, also saved
- * as public/brand/thestudent-icon.svg) so it stays sharp at every size. No
- * background tile: the #10B981 green works on both light and dark surfaces.
- * Pass `title` when the mark is meaningful on its own (e.g. TheStudent AI
- * avatar); otherwise it is treated as decorative.
+ * TheStudent logos (public/brand): the light-theme and dark-theme versions
+ * of the logo the owner uploaded (TheStudent_logo_2.png and
+ * TheStudent-Dark-Theme-Logo.png), resized to small WebP copies. Both are
+ * rendered and CSS shows the one for the current theme, so there's no
+ * flash or hydration mismatch when the theme is applied.
  */
-export const DzdLogoMark = ({
+const LOGO = {
+  dark: { height: 200, src: "/brand/thestudent-logo-dark.webp", width: 699 },
+  light: { height: 200, src: "/brand/thestudent-logo-light.webp", width: 724 },
+} as const;
+const MARK = {
+  dark: "/brand/thestudent-mark-dark.webp",
+  light: "/brand/thestudent-mark-light.webp",
+} as const;
+
+/** The full logo: icon + "TheStudent." + tagline. */
+export const BrandLogo = ({
+  height = 32,
+  className,
+  priority = false,
+}: {
+  /** Height in pixels; the width follows the logo's shape. */
+  height?: number;
+  className?: string;
+  /** Load it straight away (the logo is above the fold). */
+  priority?: boolean;
+}) => (
+  <span className={cn("inline-flex shrink-0 items-center", className)}>
+    <Image
+      alt="TheStudent"
+      className="block dark:hidden"
+      height={height}
+      priority={priority}
+      src={LOGO.light.src}
+      style={{ height, width: "auto" }}
+      unoptimized
+      width={Math.round((LOGO.light.width / LOGO.light.height) * height)}
+    />
+    <Image
+      alt="TheStudent"
+      className="hidden dark:block"
+      height={height}
+      priority={priority}
+      src={LOGO.dark.src}
+      style={{ height, width: "auto" }}
+      unoptimized
+      width={Math.round((LOGO.dark.width / LOGO.dark.height) * height)}
+    />
+  </span>
+);
+
+/**
+ * The logo's icon on its own (book, cap and pencil), for small square
+ * places: the assistant's avatar, the collapsed sidebar, labels. Pass
+ * `title` when it's meaningful on its own (e.g. TheStudent AI's avatar).
+ */
+export const BrandMark = ({
   size = 24,
   className,
   title,
@@ -67,56 +119,31 @@ export const DzdLogoMark = ({
   className?: string;
   title?: string;
 }) => (
-  <svg
-    aria-hidden={title ? undefined : true}
-    className={`shrink-0 text-[#10B981] ${className ?? ""}`}
-    fill="currentColor"
-    height={size}
-    role={title ? "img" : undefined}
-    viewBox="0 0 24 24"
-    width={size}
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    {title ? <title>{title}</title> : null}
-    <g>
-      <rect height={7} rx={0.75} width={1.5} x={2.5} y={8.5} />
-      <rect height={20} rx={0.75} width={1.5} x={5.5} y={2} />
-      <rect height={10} rx={0.75} width={1.5} x={8.5} y={7} />
-      <rect height={5} rx={0.75} width={1.5} x={11.5} y={9.5} />
-      <rect height={8.5} rx={0.75} width={1.5} x={14.5} y={8.5} />
-      <rect height={14} rx={0.75} width={1.5} x={17.5} y={8} />
-      <rect height={5.5} rx={0.75} width={1.5} x={20.5} y={10} />
-      <path
-        d="M16.5 1.063Q17.012 2.988 18.938 3.5Q17.012 4.012 16.5 5.938Q15.988 4.012 14.063 3.5Q15.988 2.988 16.5 1.063Z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-        strokeWidth={1.125}
-      />
-      <path
-        d="M21.5 4.3Q21.806 5.694 23.2 6Q21.806 6.306 21.5 7.7Q21.194 6.306 19.8 6Q21.194 5.694 21.5 4.3Z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-        strokeWidth={0.6}
-      />
-    </g>
-  </svg>
-);
-
-/** Mark + "TheStudent" wordmark. Text is real text for accessibility. */
-export const DzdWordmark = ({
-  size = 24,
-  className,
-}: {
-  size?: number;
-  className?: string;
-}) => (
   <span
-    className={`inline-flex items-center gap-2 font-semibold tracking-tight ${className ?? ""}`}
+    className={cn(
+      "inline-flex shrink-0 items-center justify-center",
+      className
+    )}
+    style={{ height: size, width: size }}
   >
-    <DzdLogoMark size={size} />
-    <span className="whitespace-nowrap text-foreground">
-      The<span className="text-brand-ink">Student</span>
-    </span>
+    <Image
+      alt={title ?? ""}
+      aria-hidden={title ? undefined : true}
+      className="block size-full dark:hidden"
+      height={size}
+      src={MARK.light}
+      unoptimized
+      width={size}
+    />
+    <Image
+      alt={title ?? ""}
+      aria-hidden={title ? undefined : true}
+      className="hidden size-full dark:block"
+      height={size}
+      src={MARK.dark}
+      unoptimized
+      width={size}
+    />
   </span>
 );
 

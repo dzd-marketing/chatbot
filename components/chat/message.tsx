@@ -23,7 +23,7 @@ import { DzdActivity } from "./dzd-activity";
 import { FileCards, FileCardsSkeleton } from "./file-cards";
 import { Flashcards, FlashcardsSkeleton } from "./flashcards";
 import { FollowUpSuggestions } from "./follow-up-suggestions";
-import { DzdLogoMark } from "./icons";
+import { BrandMark } from "./icons";
 import { MessageActions } from "./message-actions";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
@@ -629,7 +629,7 @@ const PurePreviewMessage = ({
       >
         {isAssistant && (
           <div className="flex h-[calc(15px*1.65)] shrink-0 items-center">
-            <DzdLogoMark size={28} title="TheStudent AI" />
+            <BrandMark size={28} title="TheStudent AI" />
           </div>
         )}
         {isAssistant ? (
@@ -652,7 +652,7 @@ export const ThinkingMessage = () => (
   >
     <div className="flex items-start gap-3">
       <div className="flex h-[calc(15px*1.65)] shrink-0 items-center">
-        <DzdLogoMark size={28} title="TheStudent AI" />
+        <BrandMark size={28} title="TheStudent AI" />
       </div>
 
       <WaitingText />

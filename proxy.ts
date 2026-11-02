@@ -53,8 +53,9 @@ export const config = {
     "/login",
     "/register",
 
-    // Static metadata assets (icons, social preview images) must stay public
-    // so browsers and link-preview crawlers can fetch them without a session.
-    "/((?!_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|opengraph-image|twitter-image|sitemap.xml|robots.txt).*)",
+    // Static metadata assets (icons, social preview images) and the logos in
+    // public/brand must stay public so browsers, the sign-in page and
+    // link-preview crawlers can fetch them without a session.
+    "/((?!_next/static|_next/image|brand/|favicon.ico|icon.png|apple-icon.png|opengraph-image|twitter-image|sitemap.xml|robots.txt).*)",
   ],
 };

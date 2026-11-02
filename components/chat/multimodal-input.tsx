@@ -45,7 +45,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { AnimatedPlaceholder } from "./animated-placeholder";
 import { ReasoningDropdown, ToolsDropdown } from "./composer-controls";
 import { ComposerPlusMenu } from "./composer-plus-menu";
-import { DzdLogoMark, PaperclipIcon } from "./icons";
+import { BrandMark, PaperclipIcon } from "./icons";
 import { PreviewAttachment } from "./preview-attachment";
 import {
   type SlashCommand,
@@ -1048,7 +1048,7 @@ function DzdLearnLabel() {
       className="flex h-7 min-w-0 select-none items-center gap-1.5 px-2 font-medium text-[12px] text-foreground/75 max-md:h-9 max-md:px-2.5 max-md:text-[13px]"
       data-testid="assistant-label"
     >
-      <DzdLogoMark className="size-4 shrink-0" size={16} />
+      <BrandMark size={18} />
       <span className="truncate">TheStudent AI</span>
     </div>
   );

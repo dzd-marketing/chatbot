@@ -5,7 +5,7 @@ import Link from "next/link";
 import { memo } from "react";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
-import { DzdWordmark } from "./icons";
+import { BrandLogo } from "./icons";
 import { VisibilitySelector, type VisibilityType } from "./visibility-selector";
 
 function PureChatHeader({
@@ -40,7 +40,7 @@ function PureChatHeader({
         className="flex items-center rounded-lg px-1 md:hidden"
         href="/"
       >
-        <DzdWordmark className="text-[14px]" size={22} />
+        <BrandLogo height={28} priority />
       </Link>
 
       {!isReadonly && (

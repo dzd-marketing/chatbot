@@ -1,6 +1,6 @@
 import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
-import { DzdLogoMark, DzdWordmark } from "@/components/chat/icons";
+import { BrandLogo } from "@/components/chat/icons";
 import { Preview } from "@/components/chat/preview";
 
 export default function AuthLayout({
@@ -21,7 +21,7 @@ export default function AuthLayout({
         <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-10">
           <div className="flex flex-col gap-2">
             <div className="mb-2">
-              <DzdLogoMark size={36} title="TheStudent" />
+              <BrandLogo height={44} priority />
             </div>
             {children}
           </div>
@@ -30,8 +30,6 @@ export default function AuthLayout({
 
       <div className="hidden flex-1 flex-col overflow-hidden pl-12 xl:flex">
         <div className="flex items-center gap-2 pt-8 text-[13px] text-muted-foreground">
-          <DzdWordmark className="text-[14px]" size={20} />
-          <span aria-hidden="true">·</span>
           <span>Study with TheStudent AI</span>
         </div>
         <div className="flex-1 pt-4">

@@ -1,6 +1,6 @@
 import { ArrowLeftIcon, FileTextIcon } from "lucide-react";
 import Link from "next/link";
-import { DzdLogoMark } from "@/components/chat/icons";
+import { BrandLogo } from "@/components/chat/icons";
 
 /**
  * Temporary "coming soon" page for legal documents that aren't published yet.
@@ -16,7 +16,7 @@ export function LegalPlaceholder({
   return (
     <main className="flex min-h-dvh w-full flex-col items-center justify-center bg-background px-6 py-16">
       <div className="flex w-full max-w-md flex-col items-center text-center">
-        <DzdLogoMark className="mb-8" size={40} title="TheStudent" />
+        <BrandLogo className="mb-8" height={52} priority />
 
         <span className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/50 px-3 py-1 text-[11.5px] text-muted-foreground">
           <FileTextIcon aria-hidden="true" className="size-3" />

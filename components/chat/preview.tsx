@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import { suggestions } from "@/lib/constants";
-import { DzdLogoMark } from "./icons";
+import { BrandMark } from "./icons";
 
 function PreviewSuggestionButton({
   suggestion,
@@ -45,7 +45,7 @@ export function Preview() {
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-tl-2xl bg-background">
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border/20 px-5">
-        <DzdLogoMark size={20} />
+        <BrandMark size={22} />
         <span className="text-[13px] text-muted-foreground">TheStudent AI</span>
       </div>
 
