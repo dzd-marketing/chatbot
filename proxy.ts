@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { guestRegex, isDevelopmentEnvironment } from "./lib/constants";
+import { APP_AUTH_ROUTE_PATH } from "./lib/sso/config";
 
 const PUBLIC_PATHS = new Set(["/terms", "/privacy"]);
 
@@ -12,6 +13,12 @@ export async function proxy(request: NextRequest) {
   }
 
   if (pathname.startsWith("/api/auth")) {
+    return NextResponse.next();
+  }
+
+  // TheStudent app SSO: the app POSTs its one-time code here before any
+  // session exists, so it must not be bounced to the guest sign-in.
+  if (pathname === APP_AUTH_ROUTE_PATH) {
     return NextResponse.next();
   }
 

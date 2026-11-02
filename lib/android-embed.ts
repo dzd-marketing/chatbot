@@ -15,7 +15,8 @@
  */
 
 export const EMBED_SESSION_KEY = "thestudent-embed";
-export const EMBED_ACCOUNT_KEY = "thestudent-android-account";
+/** sessionStorage marker: this tab had an app SSO session (no secrets). */
+export const EMBED_APP_SESSION_KEY = "thestudent-app-session";
 const EMBED_VALUE = "android";
 
 /**
@@ -55,13 +56,13 @@ export function isAndroidEmbed(): boolean {
 export type EmbedTheme = "dark" | "light";
 
 /**
- * What the app tells us about the signed-in student. This is a CLIENT claim:
- * use it for display and for noticing an account switch, never for
- * authorisation (any script on the page could send the same message).
+ * Display hints from the app's legacy `window.__THESTUDENT_USER__` message.
+ * This is a CLIENT claim: it only sets a display name and theme. It never
+ * grants access or picks an account; the HttpOnly session cookie from
+ * /api/app-auth is the only auth source (and its userId/email are ignored).
  */
 export type StudentIdentity = {
   name: string;
-  userId: string;
   theme: EmbedTheme | null;
 };
 
@@ -91,13 +92,12 @@ export function parseIdentity(value: unknown): StudentIdentity | null {
     return null;
   }
   const name = cleanText(data.name, 60);
-  const userId = cleanText(data.userId, 254).toLowerCase();
-  if (!(name || userId)) {
-    return null;
-  }
   const theme =
     data.theme === "dark" || data.theme === "light" ? data.theme : null;
-  return { name, theme, userId };
+  if (!(name || theme)) {
+    return null;
+  }
+  return { name, theme };
 }
 
 /* ------------------------------------------------------------------------ */
@@ -115,9 +115,7 @@ const listeners = new Set<() => void>();
 let listening = false;
 
 function sameIdentity(a: StudentIdentity | null, b: StudentIdentity | null) {
-  return (
-    a?.name === b?.name && a?.userId === b?.userId && a?.theme === b?.theme
-  );
+  return a?.name === b?.name && a?.theme === b?.theme;
 }
 
 function setIdentity(next: StudentIdentity | null) {

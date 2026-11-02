@@ -1,18 +1,41 @@
 "use client";
 
-import { signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useEmbedIdentity, useIsEmbedded } from "@/hooks/use-android-embed";
+import { postToApp } from "@/lib/android-bridge";
 import {
-  EMBED_ACCOUNT_KEY,
+  EMBED_APP_SESSION_KEY,
   EMBED_DOWNLOAD_MESSAGE,
   EMBED_LINK_BLOCKED_MESSAGE,
   EMBED_LINK_COPIED_MESSAGE,
 } from "@/lib/android-embed";
 
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+/** How often an app session is re-checked while the chat is open. */
+const SESSION_RECHECK_MS = 5 * 60 * 1000;
+
+function readFlag(key: string) {
+  try {
+    return window.sessionStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeFlag(key: string, on: boolean) {
+  try {
+    if (on) {
+      window.sessionStorage.setItem(key, "1");
+    } else {
+      window.sessionStorage.removeItem(key);
+    }
+  } catch {
+    // Storage unavailable: the bridge messages are best-effort.
+  }
+}
 
 function isDownloadUrl(url: URL) {
   return (
@@ -125,33 +148,51 @@ export function AndroidEmbed() {
     }
   }, [embedded, identityTheme, setTheme]);
 
-  // Shared phones: if a different student signs in to the app, drop the old
-  // web session so they don't see the previous student's chats.
-  const userId = identity?.userId;
+  // Session <-> app. The HttpOnly cookie set by /api/app-auth is the only
+  // auth source; the page just tells the app when that session is ready or
+  // has expired (e.g. the account was signed out in the app).
+  const { data: session, status, update } = useSession();
+  const isAppSession =
+    status === "authenticated" && session?.user?.appSession === true;
+  const readyPostedRef = useRef(false);
+
   useEffect(() => {
-    if (!(embedded && userId)) {
+    if (!embedded || status === "loading") {
       return;
     }
-    let previous: string | null = null;
-    try {
-      previous = window.localStorage.getItem(EMBED_ACCOUNT_KEY);
-      window.localStorage.setItem(EMBED_ACCOUNT_KEY, userId);
-    } catch {
+    if (isAppSession) {
+      writeFlag(EMBED_APP_SESSION_KEY, true);
+      if (!readyPostedRef.current) {
+        readyPostedRef.current = true;
+        postToApp("SESSION_READY");
+      }
       return;
     }
-    if (previous && previous !== userId) {
-      window.localStorage.removeItem("input");
-      signOut({ redirect: false })
-        .catch(() => {
-          // Fall through to a fresh guest session either way.
-        })
-        .finally(() => {
-          window.location.replace(
-            `${BASE_PATH}/api/auth/guest?redirectUrl=${encodeURIComponent(`${BASE_PATH}/`)}`
-          );
-        });
+    readyPostedRef.current = false;
+    if (readFlag(EMBED_APP_SESSION_KEY)) {
+      writeFlag(EMBED_APP_SESSION_KEY, false);
+      // After a failed hand-off (/?auth=guest) the app already knows.
+      const failedHandOff =
+        new URLSearchParams(window.location.search).get("auth") === "guest";
+      if (!failedHandOff) {
+        postToApp("SESSION_EXPIRED");
+      }
     }
-  }, [embedded, userId]);
+  }, [embedded, status, isAppSession]);
+
+  // Re-check an app session periodically while the chat is visible, so an
+  // account signed out in the app is noticed (the server asks TheStudent API).
+  useEffect(() => {
+    if (!(embedded && isAppSession)) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        update().catch(() => undefined);
+      }
+    }, SESSION_RECHECK_MS);
+    return () => window.clearInterval(timer);
+  }, [embedded, isAppSession, update]);
 
   return null;
 }

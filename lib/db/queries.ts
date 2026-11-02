@@ -70,6 +70,37 @@ export async function createGuestUser() {
   }
 }
 
+/**
+ * Finds or creates the website user for a TheStudent app account, keyed ONLY
+ * by `sub` (atomic upsert on the unique appSub column). `name` is display
+ * data. The placeholder email ("app-<sub>") is not an address: it can't be
+ * registered or used to log in, so app and website accounts never merge.
+ */
+export async function upsertAppUser({
+  name,
+  sub,
+}: {
+  name: string | null;
+  sub: string;
+}) {
+  try {
+    const [row] = await db
+      .insert(user)
+      .values({ appSub: sub, email: `app-${sub}`, name })
+      .onConflictDoUpdate({
+        set: name ? { name, updatedAt: new Date() } : { updatedAt: new Date() },
+        target: user.appSub,
+      })
+      .returning({ id: user.id });
+    if (!row) {
+      throw new Error("Upsert returned no row");
+    }
+    return row;
+  } catch (error) {
+    throw new ChatbotError("bad_request:database", { cause: error });
+  }
+}
+
 export async function saveChat({
   id,
   userId,

@@ -44,8 +44,10 @@ export function SidebarUserNav({
   const { setTheme, resolvedTheme } = useTheme();
 
   const isGuest = guestRegex.test(data?.user?.email ?? "");
-  // Inside the Android app, show the app account's name instead of "Guest".
+  // Inside the Android app, show the app's display name instead of "Guest".
   const embedName = useEmbedIdentity()?.name;
+  // App SSO accounts show their name (website accounts keep showing email).
+  const appName = data?.user?.appSession ? data.user.name : null;
   const handleThemeSelect = useCallback(() => {
     setTheme(resolvedTheme === "dark" ? "light" : "dark");
   }, [resolvedTheme, setTheme]);
@@ -98,7 +100,7 @@ export function SidebarUserNav({
                   }}
                 />
                 <span className="truncate text-[13px]" data-testid="user-email">
-                  {isGuest ? embedName || "Guest" : user?.email}
+                  {isGuest ? embedName || "Guest" : appName || user?.email}
                 </span>
                 <ChevronUp className="ml-auto size-3.5 text-sidebar-foreground/50" />
               </SidebarMenuButton>
