@@ -9,6 +9,6 @@ export function fileNameFor(title: string, extension: string) {
       .replace(/[:*?"<>|]+/g, " ")
       .replace(/\s+/g, " ")
       .trim()
-      .slice(0, 80) || "DZD Learn document";
+      .slice(0, 80) || "TheStudent document";
   return `${base}.${extension}`;
 }

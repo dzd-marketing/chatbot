@@ -1,5 +1,5 @@
 ---
-title: DZD Voice
+title: TheStudent Voice
 emoji: 🎙️
 colorFrom: green
 colorTo: gray
@@ -8,12 +8,12 @@ sdk_version: 6.29.1
 app_file: app.py
 pinned: false
 license: mit
-short_description: DZD Learn AI voice (Kyutai Pocket TTS on CPU)
+short_description: TheStudent AI voice (Kyutai Pocket TTS on CPU)
 ---
 
-# DZD Voice
+# TheStudent Voice
 
-The DZD Learn AI voice, made with [Kyutai Pocket TTS](https://github.com/kyutai-labs/pocket-tts)
+TheStudent AI voice, made with [Kyutai Pocket TTS](https://github.com/kyutai-labs/pocket-tts)
 (code MIT, weights CC BY 4.0). It runs on the CPU only.
 
 Setup:

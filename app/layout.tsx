@@ -6,9 +6,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 
-const APP_NAME = "DZD Learn";
+const APP_NAME = "TheStudent";
 const APP_DESCRIPTION =
-  "DZD AI is the DZD Learn study assistant for G.C.E. A/L, O/L, Grade 5 Scholarship and university students: clear, step-by-step explanations in English, Sinhala and Tamil.";
+  "TheStudent AI is the study assistant from TheStudent for G.C.E. A/L, O/L, Grade 5 Scholarship and university students: clear, step-by-step explanations in English, Sinhala and Tamil.";
 
 // Use Vercel's built-in system env vars for absolute OG/Twitter image URLs
 // instead of hard-coding a domain. Falls back to localhost for local dev.
@@ -29,17 +29,17 @@ export const metadata: Metadata = {
   openGraph: {
     description: APP_DESCRIPTION,
     siteName: APP_NAME,
-    title: `${APP_NAME} · Study with DZD AI`,
+    title: `${APP_NAME} · Study with TheStudent AI`,
     type: "website",
   },
   title: {
-    default: `${APP_NAME} · Study with DZD AI`,
+    default: `${APP_NAME} · Study with TheStudent AI`,
     template: `%s · ${APP_NAME}`,
   },
   twitter: {
     card: "summary_large_image",
     description: APP_DESCRIPTION,
-    title: `${APP_NAME} · Study with DZD AI`,
+    title: `${APP_NAME} · Study with TheStudent AI`,
   },
 };
 

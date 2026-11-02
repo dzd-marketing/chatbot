@@ -1,9 +1,9 @@
 /**
- * Legal page links shown on the welcome screen ("By using DZD Learn AI, you
+ * Legal page links shown on the welcome screen ("By using TheStudent AI, you
  * agree to our Terms and Privacy Policy").
  *
  * PLACEHOLDERS: these point to the in-app placeholder pages at /terms and
- * /privacy until the real pages exist on the DZD Learn website. When they
+ * /privacy until the real pages exist on TheStudent's website. When they
  * are published, replace the two values with the full website URLs, e.g.
  *   TERMS_URL   = "https://your-website.example/terms"
  *   PRIVACY_URL = "https://your-website.example/privacy-policy"

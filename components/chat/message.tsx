@@ -189,7 +189,7 @@ const PurePreviewMessage = ({
     { isStreaming: false, rendered: false, text: "" }
   ) ?? { isStreaming: false, rendered: false, text: "" };
 
-  // When DZD AI used web tools, its reasoning and search/read steps are shown
+  // When TheStudent AI used web tools, its reasoning and search/read steps are shown
   // together as one chain of thought, placed where the first of them occurs.
   const hasWebActivity = message.parts?.some(isWebToolPart) ?? false;
   const researchParts: ResearchPart[] = hasWebActivity
@@ -207,7 +207,7 @@ const PurePreviewMessage = ({
       .slice(lastResearchIndex + 1)
       .some((part) => part.type === "text" && part.text.trim().length > 0);
 
-  // DZD Learn AI's own web research (progress from its server).
+  // TheStudent AI's own web research (progress from its server).
   const dzdActivityIndex =
     message.parts?.findLastIndex((part) => part.type === "data-dzd-activity") ??
     -1;
@@ -629,7 +629,7 @@ const PurePreviewMessage = ({
       >
         {isAssistant && (
           <div className="flex h-[calc(15px*1.65)] shrink-0 items-center">
-            <DzdLogoMark size={28} title="DZD AI" />
+            <DzdLogoMark size={28} title="TheStudent AI" />
           </div>
         )}
         {isAssistant ? (
@@ -652,7 +652,7 @@ export const ThinkingMessage = () => (
   >
     <div className="flex items-start gap-3">
       <div className="flex h-[calc(15px*1.65)] shrink-0 items-center">
-        <DzdLogoMark size={28} title="DZD AI" />
+        <DzdLogoMark size={28} title="TheStudent AI" />
       </div>
 
       <WaitingText />

@@ -21,7 +21,7 @@ export default function AuthLayout({
         <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-10">
           <div className="flex flex-col gap-2">
             <div className="mb-2">
-              <DzdLogoMark size={36} title="DZD Learn" />
+              <DzdLogoMark size={36} title="TheStudent" />
             </div>
             {children}
           </div>
@@ -32,7 +32,7 @@ export default function AuthLayout({
         <div className="flex items-center gap-2 pt-8 text-[13px] text-muted-foreground">
           <DzdWordmark className="text-[14px]" size={20} />
           <span aria-hidden="true">·</span>
-          <span>Study with DZD AI</span>
+          <span>Study with TheStudent AI</span>
         </div>
         <div className="flex-1 pt-4">
           <Preview />

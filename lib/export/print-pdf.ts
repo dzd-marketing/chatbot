@@ -60,7 +60,7 @@ math { font-size: 1.08em; }
 export function markdownToPrintableHtml(title: string, source: string) {
   const body = markdown.parse(prepareMarkdown(source)) as string;
   const startsWithTitle = /^\s*#\s/.test(source);
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>${STYLES}</style></head><body>${startsWithTitle ? "" : `<h1>${escapeHtml(title)}</h1>`}${body}<div class="dzd-footer">DZD Learn</div></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>${STYLES}</style></head><body>${startsWithTitle ? "" : `<h1>${escapeHtml(title)}</h1>`}${body}<div class="dzd-footer">TheStudent</div></body></html>`;
 }
 
 const isIOS = () =>

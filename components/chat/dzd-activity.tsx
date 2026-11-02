@@ -99,7 +99,7 @@ function summarize(data: DzdActivityData) {
 }
 
 /**
- * DZD Learn AI's server-side work for a reply (its own web search and page
+ * TheStudent AI's server-side work for a reply (its own web search and page
  * reading), shown as a chain of thought: live status lines while the Space
  * works, then a summary. Text comes from the model server and is rendered
  * as plain text only.

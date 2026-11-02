@@ -144,7 +144,7 @@ export function ToolsDropdown() {
   // Assume support until capabilities load, so the default "on" state
   // doesn't flicker.
   const supportsTools = capabilities?.tools ?? true;
-  // Models with their own server-side search (DZD Learn AI) decide by
+  // Models with their own server-side search (TheStudent AI) decide by
   // themselves when to search; the website's tools can't be used.
   const builtIn = capabilities?.builtInWebSearch === true;
   const modelName = model?.name ?? "This model";
@@ -247,7 +247,7 @@ export function ToolsDropdown() {
 
 const noopToggle = () => undefined;
 
-/** DZD Learn AI: its server searches the web by itself; nothing to switch. */
+/** TheStudent AI: its server searches the web by itself; nothing to switch. */
 function BuiltInSearchRow() {
   return (
     <>

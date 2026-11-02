@@ -5,7 +5,7 @@ import { tool } from "ai";
 import { z } from "zod";
 
 /**
- * Web search + page reading for DZD AI, backed by the public "Tools MCP"
+ * Web search + page reading for TheStudent AI, backed by the public "Tools MCP"
  * Hugging Face Space (alyxsis/Tools), reached over MCP Streamable HTTP.
  *
  * The Space exposes exactly two MCP tools: Tools_Web_Search and

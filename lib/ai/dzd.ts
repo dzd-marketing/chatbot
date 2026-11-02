@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 
 /**
- * DZD Learn AI: DZD's own model (gpt-oss-20b) served by a private Hugging
+ * TheStudent AI: TheStudent's own model (gpt-oss-20b) served by a private Hugging
  * Face Space with an OpenAI-compatible Chat Completions API.
  *
  * - Called only from the server (the authenticated /api/chat route). The
@@ -45,7 +45,7 @@ const MAX_TOOL_NAME_CHARS = 40;
  */
 export class DzdTimeoutError extends Error {
   constructor() {
-    super("DZD Learn AI did not finish in time");
+    super("TheStudent AI did not finish in time");
     this.name = "DzdTimeoutError";
   }
 }
@@ -325,7 +325,7 @@ export function createDzdFetch(hooks: DzdStreamHooks = {}): typeof fetch {
   };
 }
 
-/** A DZD Learn AI language model for one request, wired to `hooks`. */
+/** The TheStudent AI language model for one request, wired to `hooks`. */
 export function createDzdModel(hooks: DzdStreamHooks = {}) {
   const token = getDzdToken();
   if (!token) {

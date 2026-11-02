@@ -1,4 +1,4 @@
-"""DZD Learn AI voice: Kyutai Pocket TTS speaking in the DZD voice.
+"""TheStudent AI voice: Kyutai Pocket TTS speaking in the custom voice.
 
 Runs on the Space's CPU only (CPU Basic, or ZeroGPU without ever asking for
 the GPU, so no GPU quota is used).
@@ -219,7 +219,7 @@ def voice_state(model: TTSModel, kind: str, name: str):
                 export_model_state(state, cache)
             except OSError:
                 log.exception("Could not cache the voice embedding")
-            log.info("Cloned the DZD voice for %s in %.1fs", kind, time.perf_counter() - started)
+            log.info("Cloned the custom voice for %s in %.1fs", kind, time.perf_counter() - started)
     elif name in FEMALE_VOICES:
         state = model.get_state_for_audio_prompt(name)
     else:
@@ -528,9 +528,9 @@ elif CHOSEN_VOICE == CUSTOM:
 else:
     VOICE_NOTE = f"built-in '{VOICE_NAME}'"
 
-with gr.Blocks(title="DZD Voice") as demo:
+with gr.Blocks(title="TheStudent Voice") as demo:
     gr.Markdown(
-        "## DZD Learn AI voice\n"
+        "## TheStudent AI voice\n"
         f"Website: **{VOICE_NOTE}** · {MODEL_LABELS[MODEL_KIND]} · speed {DEFAULT_SPEED:g} · "
         f"expressiveness {DEFAULT_TEMP:g} · workers: {WORKERS} · CPUs: {CPUS} · "
         f"first audio after warm-up: {SPEED.get('first_audio_ms', '?')} ms · "
@@ -588,5 +588,5 @@ if __name__ == "__main__":
     # Put the voice endpoints ahead of Gradio's own routes.
     for route in reversed(router.routes):
         demo.app.router.routes.insert(0, route)
-    log.info("DZD voice is ready")
+    log.info("TheStudent voice is ready")
     demo.block_thread()

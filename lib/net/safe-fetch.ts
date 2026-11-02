@@ -18,7 +18,7 @@ export class SafeFetchError extends Error {
 }
 
 const USER_AGENT =
-  "Mozilla/5.0 (compatible; DZDLearnBot/1.0; +https://github.com/dzd-marketing/chatbot)";
+  "Mozilla/5.0 (compatible; TheStudentBot/1.0; +https://github.com/dzd-marketing/chatbot)";
 
 function isPrivateIPv4(address: string) {
   const [a, b] = address.split(".").map(Number);

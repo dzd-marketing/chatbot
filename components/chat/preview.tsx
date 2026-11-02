@@ -46,7 +46,7 @@ export function Preview() {
     <div className="flex h-full flex-col overflow-hidden rounded-tl-2xl bg-background">
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border/20 px-5">
         <DzdLogoMark size={20} />
-        <span className="text-[13px] text-muted-foreground">DZD AI</span>
+        <span className="text-[13px] text-muted-foreground">TheStudent AI</span>
       </div>
 
       <div className="flex flex-1 flex-col items-center justify-center gap-8 px-8">
@@ -76,7 +76,7 @@ export function Preview() {
           onClick={handleDefaultAction}
           type="button"
         >
-          Ask DZD AI anything...
+          Ask TheStudent AI anything...
         </button>
       </div>
     </div>

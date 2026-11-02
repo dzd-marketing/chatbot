@@ -12,7 +12,7 @@ export const guestRegex = /^guest-\d+$/;
 
 export const DUMMY_PASSWORD = generateDummyPassword();
 
-// Student-oriented starter prompts shown on the DZD Learn welcome screen.
+// Student-oriented starter prompts shown on the welcome screen.
 export const suggestions = [
   "Explain Newton's three laws of motion with A/L-style examples",
   "Solve step by step: integrate x·e^x with respect to x",

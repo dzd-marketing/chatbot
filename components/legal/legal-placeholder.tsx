@@ -16,7 +16,7 @@ export function LegalPlaceholder({
   return (
     <main className="flex min-h-dvh w-full flex-col items-center justify-center bg-background px-6 py-16">
       <div className="flex w-full max-w-md flex-col items-center text-center">
-        <DzdLogoMark className="mb-8" size={40} title="DZD Learn" />
+        <DzdLogoMark className="mb-8" size={40} title="TheStudent" />
 
         <span className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/50 px-3 py-1 text-[11.5px] text-muted-foreground">
           <FileTextIcon aria-hidden="true" className="size-3" />
@@ -36,7 +36,7 @@ export function LegalPlaceholder({
           href="/"
         >
           <ArrowLeftIcon aria-hidden="true" className="size-3.5" />
-          Back to DZD Learn AI
+          Back to TheStudent AI
         </Link>
       </div>
     </main>

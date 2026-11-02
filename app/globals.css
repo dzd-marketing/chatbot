@@ -59,7 +59,7 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  /* DZD Learn brand tokens */
+  /* TheStudent brand tokens */
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-ink: var(--brand-ink);
@@ -71,7 +71,7 @@
   --radius: 0.625rem;
 
   /*
-   * DZD Learn green: a deep emerald that pairs with black and white.
+   * TheStudent green: a deep emerald that pairs with black and white.
    * Light mode: #047857 = oklch(0.5081 0.1049 165.61)
    *   - white text on green 5.5:1, green text/links on white 5.3:1 (AA)
    * Dark mode (see .dark): #10B981 = oklch(0.6959 0.1491 162.48)

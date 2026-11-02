@@ -85,10 +85,10 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                 <SidebarMenuButton
                   asChild
                   className="size-8 !px-0 items-center justify-center group-data-[collapsible=icon]:group-hover/logo:opacity-0"
-                  tooltip="DZD Learn"
+                  tooltip="TheStudent"
                 >
                   <Link
-                    aria-label="DZD Learn home"
+                    aria-label="TheStudent home"
                     href="/"
                     onClick={closeMobile}
                   >
@@ -116,10 +116,10 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                 tabIndex={-1}
               >
                 <span className="truncate font-semibold text-[15px] text-foreground tracking-tight">
-                  DZD <span className="text-brand-ink">Learn</span>
+                  The<span className="text-brand-ink">Student</span>
                 </span>
                 <span className="truncate text-[11px] text-sidebar-foreground/80">
-                  with DZD AI
+                  with TheStudent AI
                 </span>
               </Link>
               <div className="group-data-[collapsible=icon]:hidden">

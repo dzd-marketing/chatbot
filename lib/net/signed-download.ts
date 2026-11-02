@@ -5,7 +5,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 /**
  * Download links for files shown in download cards. The file comes through
  * /api/files/download so it downloads right in the chat. Links are signed
- * with AUTH_SECRET, so the route only serves files DZD AI actually shared
+ * with AUTH_SECRET, so the route only serves files TheStudent AI actually shared
  * (it can't be used as an open proxy or redirect).
  */
 

@@ -35,7 +35,7 @@ import {
 import { VoiceLanguageMenu } from "./voice-input";
 
 /**
- * Voice conversation: the student talks with DZD AI hands-free. The
+ * Voice conversation: the student talks with TheStudent AI hands-free. The
  * composer's speech button (shown while nothing is typed) asks for the
  * language, then a call card opens (assistant-ui's Voice Conversation with
  * the Persona globe). Each spoken turn is sent to the chat like a typed
@@ -625,11 +625,11 @@ export function VoiceCall({
           testIdPrefix="call-language"
           trigger={
             <button
-              aria-label="Talk with DZD AI"
+              aria-label="Talk with TheStudent AI"
               className="flex size-7 cursor-pointer items-center justify-center rounded-xl bg-primary text-primary-foreground outline-none transition-[opacity,scale] duration-200 hover:bg-primary/85 focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 max-md:size-9 max-md:rounded-full"
               data-testid="voice-call-button"
               disabled={disabled}
-              title="Talk with DZD AI"
+              title="Talk with TheStudent AI"
               type="button"
             >
               <AudioLinesIcon className="size-4" />

@@ -1,7 +1,7 @@
 import type { Skill } from "../types";
 
 /**
- * How DZD AI sounds on a call: a friendly study buddy, not a formal tutor.
+ * How TheStudent AI sounds on a call: a friendly study buddy, not a formal tutor.
  * Personality, tone that follows the student's mood, and variety (voice
  * guides: OpenAI Realtime prompting "Personality and Tone" + "Variety",
  * Alexa "Add variety" / adaptive prompts, ElevenLabs expressive delivery).

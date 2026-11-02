@@ -54,7 +54,7 @@ export type WaitingStatusData = {
 };
 
 /**
- * DZD Learn AI's server-side work for one reply: live status lines from the
+ * TheStudent AI's server-side work for one reply: live status lines from the
  * Space's `dzd_progress` chunks, then the optional tool-step telemetry.
  * Updated in place while streaming and saved with the message.
  */

@@ -1,16 +1,16 @@
 import { expect, test } from "@playwright/test";
 
-// Students always talk to DZD Learn AI; the server picks the model behind
+// Students always talk to TheStudent AI; the server picks the model behind
 // each reply, so there is no model picker.
 test.describe("Assistant label", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
   });
 
-  test("shows DZD Learn AI in the composer", async ({ page }) => {
+  test("shows TheStudent AI in the composer", async ({ page }) => {
     const label = page.getByTestId("assistant-label");
     await expect(label).toBeVisible();
-    await expect(label).toHaveText("DZD Learn AI");
+    await expect(label).toHaveText("TheStudent AI");
   });
 
   test("has no model picker", async ({ page }) => {

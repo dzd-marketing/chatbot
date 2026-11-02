@@ -1,5 +1,5 @@
 /**
- * Students see one assistant, DZD Learn AI. Which model writes each reply
+ * Students see one assistant, TheStudent AI. Which model writes each reply
  * is decided on the server (lib/ai/router.ts) and never shown in the app.
  */
 export const DZD_LEARN_MODEL_ID = "dzd-learn/auto";
@@ -116,16 +116,16 @@ export function resolveReasoningLevel(
 }
 
 export const dzdLearnModel: ChatModel = {
-  description: "DZD Learn's study assistant",
+  description: "TheStudent's study assistant",
   id: DZD_LEARN_MODEL_ID,
-  name: "DZD Learn AI",
+  name: "TheStudent AI",
   provider: "dzd-learn",
   // Fast (thinking off) or Thinking; the server applies it to whichever
   // model answers.
   reasoning: { control: "toggle", defaultLevel: "high" },
 };
 
-/** What DZD Learn AI can do (the server picks a suitable model per reply). */
+/** What TheStudent AI can do (the server picks a suitable model per reply). */
 export const dzdLearnCapabilities: ModelCapabilities = {
   reasoning: true,
   tools: true,

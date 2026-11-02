@@ -5,7 +5,7 @@ import { memo, useEffect, useState } from "react";
 
 /** Rotating hints shown in the empty message input. */
 export const PLACEHOLDER_HINTS = [
-  "Ask DZD AI anything…",
+  "Ask TheStudent AI anything…",
   "Explain Newton's laws with A/L examples…",
   "ඕනෑම පාඩමක් ගැන සිංහලෙන් අහන්න…",
   "Make me an O/L Maths revision plan…",

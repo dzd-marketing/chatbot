@@ -8,7 +8,7 @@ import {
 } from "./models";
 
 /**
- * Students only ever get DZD Learn AI; the server routes each reply to a
+ * Students only ever get TheStudent AI; the server routes each reply to a
  * model (lib/ai/router.ts). Model ids from older clients are ignored.
  */
 export function findChatModel(_modelId: string): ChatModel {

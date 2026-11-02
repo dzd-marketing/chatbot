@@ -51,11 +51,11 @@ export const AttachmentIcon = () => (
 );
 
 /**
- * DZD Learn brand mark: green sound-wave bars with two sparkles, drawn as an
- * inline SVG (a vector rebuild of public/brand/dzd-learn-icon.png, also saved
- * as public/brand/dzd-learn-icon.svg) so it stays sharp at every size. No
+ * TheStudent brand mark: green sound-wave bars with two sparkles, drawn as an
+ * inline SVG (a vector rebuild of public/brand/thestudent-icon.png, also saved
+ * as public/brand/thestudent-icon.svg) so it stays sharp at every size. No
  * background tile: the #10B981 green works on both light and dark surfaces.
- * Pass `title` when the mark is meaningful on its own (e.g. the DZD AI
+ * Pass `title` when the mark is meaningful on its own (e.g. TheStudent AI
  * avatar); otherwise it is treated as decorative.
  */
 export const DzdLogoMark = ({
@@ -102,7 +102,7 @@ export const DzdLogoMark = ({
   </svg>
 );
 
-/** Mark + "DZD Learn" wordmark. Text is real text for accessibility. */
+/** Mark + "TheStudent" wordmark. Text is real text for accessibility. */
 export const DzdWordmark = ({
   size = 24,
   className,
@@ -115,7 +115,7 @@ export const DzdWordmark = ({
   >
     <DzdLogoMark size={size} />
     <span className="whitespace-nowrap text-foreground">
-      DZD <span className="text-brand-ink">Learn</span>
+      The<span className="text-brand-ink">Student</span>
     </span>
   </span>
 );

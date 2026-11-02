@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The DZD voice in the browser: streams sentences from /api/voice/speak
+ * TheStudent voice in the browser: streams sentences from /api/voice/speak
  * (raw 16-bit PCM) and plays them gaplessly with the Web Audio API.
  */
 
@@ -157,7 +157,7 @@ export function releaseAudioSession() {
   }
 }
 
-/** Whether the DZD voice is ready (also wakes its Space). */
+/** Whether the custom voice is ready (also wakes its Space). */
 export async function checkVoice(signal?: AbortSignal) {
   try {
     const response = await fetch(ENDPOINT, { cache: "no-store", signal });

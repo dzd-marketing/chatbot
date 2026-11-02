@@ -17,8 +17,8 @@ export const Greeting = () => (
       initial={{ opacity: 0, y: 10 }}
       transition={{ delay: 0.35, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
     >
-      Hi, I&apos;m <span className="text-brand-ink">DZD AI</span>. What are we
-      studying today?
+      Hi, I&apos;m <span className="text-brand-ink">TheStudent AI</span>. What
+      are we studying today?
     </motion.h1>
   </div>
 );

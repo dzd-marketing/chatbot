@@ -323,7 +323,7 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
-/** $…$ inline maths is off by default in Streamdown; DZD AI uses it. */
+/** $…$ inline maths is off by default in Streamdown; TheStudent AI uses it. */
 const math = createMathPlugin({ singleDollarTextMath: true });
 
 const streamdownPlugins = { cjk, code, math, mermaid };

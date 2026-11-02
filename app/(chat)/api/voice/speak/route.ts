@@ -3,8 +3,8 @@ import { getDzdToken } from "@/lib/ai/dzd";
 import { forSpeech } from "@/lib/voice-pronounce";
 
 /**
- * The DZD voice for voice conversations: forwards a sentence to the voice
- * Space (Kyutai Pocket TTS speaking in the DZD voice) and streams the audio
+ * TheStudent voice for voice conversations: forwards a sentence to the voice
+ * Space (Kyutai Pocket TTS speaking in the custom voice) and streams the audio
  * back as it's made: raw 16-bit mono PCM, sample rate in X-Sample-Rate.
  *
  * GET wakes the Space and reports whether the voice is ready, so a call

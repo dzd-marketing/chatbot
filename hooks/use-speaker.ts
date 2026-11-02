@@ -23,7 +23,7 @@ import {
  * sentence as the reply streams in, reporting which word is being said so
  * the transcript can follow along.
  *
- * English uses the DZD voice (streamed from the voice Space through
+ * English uses the custom voice (streamed from the voice Space through
  * /api/voice/speak); each sentence is fetched as soon as it's written, so
  * the next one is ready when the last ends. If the voice is slow or down,
  * the device's built-in voice (speechSynthesis) takes over, which is also
@@ -48,7 +48,7 @@ export type SpeechProgress = {
 type Sentence = {
   text: string;
   start: number;
-  /** Its audio in the DZD voice. */
+  /** Its audio in the custom voice. */
   job?: SpeechJob;
   /** Said with the device's voice instead. */
   device?: boolean;
@@ -75,7 +75,7 @@ const DEFAULT_PACE: Record<CallLanguage, number> = {
 };
 const RATE = 1;
 
-/** The language spoken with the DZD voice. */
+/** The language spoken with the custom voice. */
 const DZD_LANG: CallLanguage = "en-IN";
 /** A sentence that hasn't started sounding by then uses the device voice. */
 const FIRST_AUDIO_TIMEOUT_MS = 3500;
@@ -89,7 +89,7 @@ const DZD_PACE_KEY = "dzd-voice";
 
 type VoiceState = "unknown" | "checking" | "ready" | "off";
 
-/** The "mm-hmm"s in the DZD voice, fetched once per page. */
+/** The "mm-hmm"s in the custom voice, fetched once per page. */
 const clipCache = new Map<string, AudioBuffer>();
 let clipsLoading = false;
 
@@ -133,7 +133,7 @@ export function useSpeaker(lang: CallLanguage) {
   const [hasVoice, setHasVoice] = useState<boolean | null>(null);
   const [speaking, setSpeaking] = useState(false);
   const [progress, setProgress] = useState<SpeechProgress | null>(null);
-  /** The DZD voice answered its last check. */
+  /** TheStudent voice answered its last check. */
   const [voiceReady, setVoiceReady] = useState(false);
 
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
@@ -165,7 +165,7 @@ export function useSpeaker(lang: CallLanguage) {
     setVoiceReady(state === "ready");
   }, []);
 
-  /** Whether new sentences should try the DZD voice. */
+  /** Whether new sentences should try the custom voice. */
   const usesDzdVoice = useCallback(
     () =>
       langRef.current === DZD_LANG &&
@@ -214,7 +214,7 @@ export function useSpeaker(lang: CallLanguage) {
     [usesDzdVoice]
   );
 
-  /** Fetches the listening sounds in the DZD voice while it's idle. */
+  /** Fetches the listening sounds in the custom voice while it's idle. */
   const loadClips = useCallback(async () => {
     if (clipsLoading) {
       return;
@@ -246,7 +246,7 @@ export function useSpeaker(lang: CallLanguage) {
     }
   }, [jobsRunning]);
 
-  /** Checks (and wakes) the DZD voice. */
+  /** Checks (and wakes) the custom voice. */
   const checkDzdVoice = useCallback(async () => {
     if (voiceStateRef.current === "checking") {
       return;
@@ -330,7 +330,7 @@ export function useSpeaker(lang: CallLanguage) {
     [checkDzdVoice]
   );
 
-  /** Silences the DZD voice's audio. */
+  /** Silences the custom voice's audio. */
   const stopAudio = useCallback(() => {
     unsubscribeRef.current?.();
     unsubscribeRef.current = null;
@@ -421,7 +421,7 @@ export function useSpeaker(lang: CallLanguage) {
     }
     const { job } = sentence;
     if (job && !job.failed && ctx?.state === "running") {
-      /** Plays the sentence in the DZD voice as its audio streams in. */
+      /** Plays the sentence in the custom voice as its audio streams in. */
       let started = false;
       let startAt = 0;
       let endAt = 0;
@@ -681,7 +681,7 @@ export function useSpeaker(lang: CallLanguage) {
   /** A soft "mm-hmm" while the student pauses. False if it can't play. */
   const backchannel = useCallback((phrase: string) => {
     if (langRef.current === DZD_LANG && voiceStateRef.current === "ready") {
-      // Only in the DZD voice: a different voice saying "mm-hmm" is odd.
+      // Only in the custom voice: a different voice saying "mm-hmm" is odd.
       const clip = clipCache.get(phrase);
       return Boolean(clip && !busyRef.current && playClip(clip, 0.7));
     }
@@ -719,7 +719,7 @@ export function useSpeaker(lang: CallLanguage) {
     backchannel,
     cancel,
     feed,
-    // The DZD voice speaks English even where the device has no voice.
+    // TheStudent voice speaks English even where the device has no voice.
     hasVoice: lang === DZD_LANG && voiceReady ? true : hasVoice,
     progress,
     speaking,

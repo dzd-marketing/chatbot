@@ -1,5 +1,5 @@
 /**
- * English text as it should be *said*, for the DZD voice (Kyutai Pocket
+ * English text as it should be *said*, for the custom voice (Kyutai Pocket
  * TTS). The voice model has no text normalisation of its own: digits,
  * symbols, slashes and acronyms make it guess, mispronounce ("A/L" came
  * out as "A I L L") or skip words. This turns them into plain words:

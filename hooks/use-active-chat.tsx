@@ -93,7 +93,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
   const chatId = chatIdFromUrl ?? newChatIdRef.current;
 
-  // One assistant, DZD Learn AI; the server picks the model for each reply.
+  // One assistant, TheStudent AI; the server picks the model for each reply.
   const currentModelId = DEFAULT_CHAT_MODEL;
 
   const [input, setInput] = useState("");

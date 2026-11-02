@@ -9,9 +9,9 @@ const ANSWER_EXCERPT_CHARS = 2500;
 const QUESTION_EXCERPT_CHARS = 1000;
 const TIMEOUT_MS = 8000;
 
-const suggestionsPrompt = `You write follow-up suggestions for DZD AI, a study assistant for Sri Lankan students (O/L, A/L, Grade 5 Scholarship and university).
+const suggestionsPrompt = `You write follow-up suggestions for TheStudent AI, a study assistant for Sri Lankan students (O/L, A/L, Grade 5 Scholarship and university).
 
-Given the student's last message and DZD AI's answer, write exactly ${SUGGESTION_COUNT} short messages the STUDENT could send next.
+Given the student's last message and TheStudent AI's answer, write exactly ${SUGGESTION_COUNT} short messages the STUDENT could send next.
 
 Rules:
 - Write from the student's point of view, as requests or questions (e.g. "Give me a practice question on this", "Explain step 2 again").
@@ -79,7 +79,7 @@ export async function generateFollowUpSuggestions({
       maxOutputTokens: 200,
       maxRetries: 0,
       model: getTitleModel(),
-      prompt: `Student's message:\n${question.slice(0, QUESTION_EXCERPT_CHARS) || "(no text, e.g. an image)"}\n\nDZD AI's answer:\n${answer.slice(0, ANSWER_EXCERPT_CHARS)}`,
+      prompt: `Student's message:\n${question.slice(0, QUESTION_EXCERPT_CHARS) || "(no text, e.g. an image)"}\n\nTheStudent AI's answer:\n${answer.slice(0, ANSWER_EXCERPT_CHARS)}`,
     });
     return parseSuggestions(text);
   } catch {

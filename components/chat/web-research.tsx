@@ -434,7 +434,7 @@ export function useResearchDisclosure(isResearching: boolean) {
 
 /**
  * Renders a message's reasoning + web search/read steps as a chain of
- * thought. Open while DZD AI is researching, then collapses once the answer
+ * thought. Open while TheStudent AI is researching, then collapses once the answer
  * starts (unless the student opened or closed it themselves).
  */
 export function WebResearch({

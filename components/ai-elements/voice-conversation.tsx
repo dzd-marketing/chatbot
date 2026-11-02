@@ -4,7 +4,7 @@
  * Voice Conversation, from assistant-ui Elements (MIT):
  * https://www.assistant-ui.com/elements/voice-conversation
  * Same anatomy and classes as VoiceConversation, with these changes for
- * DZD Learn:
+ * TheStudent:
  * - `orb` replaces the ring orb (the Persona globe sits there);
  * - the five call states are shown as a row of indicators under it;
  * - the assistant's turn follows the voice: words already said are solid,

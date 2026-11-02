@@ -29,14 +29,14 @@ import {
 import { createZaiModel, hasZaiKey, ZAI_GLM_FLASH } from "./zai";
 
 /**
- * DZD Learn AI is one assistant to the student; which model writes a reply
+ * TheStudent AI is one assistant to the student; which model writes a reply
  * is decided here, on the server, request by request:
  *
  *   1. NVIDIA Nemotron 3 Ultra (the default)
  *   2. NVIDIA gpt-oss-20b
  *   3. other free NVIDIA chat models that aren't busy (best first)
  *   4. Z.AI GLM-4.7-Flash
- *   5. DZD's own model on Hugging Face (always the last resort)
+ *   5. TheStudent's own model on Hugging Face (always the last resort)
  *
  * A model counts as busy when it is rate limited, errors, refuses the
  * request, or doesn't start answering in time. Nothing has been sent to the
@@ -83,7 +83,7 @@ const MIN_ATTEMPT_MS = 8000;
 /** Always-thinking models need room for the thinking plus the answer. */
 const MIN_TOKENS_FOR_THINKING_MODELS = 1024;
 
-/** DZD's model runs on CPU: keep its share of the conversation small. */
+/** TheStudent's own model runs on CPU: keep its share of the conversation small. */
 const DZD_MAX_TEXT_CHARS = 12_000;
 
 export type RouteCandidate = {
@@ -465,7 +465,7 @@ function capText(text: string) {
 }
 
 /**
- * DZD's model: plain text history (no tool calls, no files), the latest
+ * TheStudent's own model: plain text history (no tool calls, no files), the latest
  * turns only, its own instructions (it searches the web by itself) and its
  * token limit.
  */
@@ -524,9 +524,9 @@ export type RouterOptions = {
   purpose: RoutePurpose;
   /** The student's reasoning choice ("off" = Fast). */
   reasoningLevel?: ReasoningLevel;
-  /** Progress callbacks for DZD's model. */
+  /** Progress callbacks for TheStudent's own model. */
   dzdHooks?: DzdStreamHooks;
-  /** Instructions for DZD's model (it has its own web search). */
+  /** Instructions for TheStudent's own model (it has its own web search). */
   dzdInstructions?: string;
   /** Time (ms since epoch) by which a reply must have started. */
   deadline?: number;
@@ -622,7 +622,7 @@ function logFailure(
 }
 
 /**
- * A language model that serves "DZD Learn AI" by routing each call through
+ * A language model that serves "TheStudent AI" by routing each call through
  * the model list above.
  */
 export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
@@ -931,10 +931,10 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
 /** A short, student-friendly message when no model could answer. */
 export function routerErrorMessage(error: unknown) {
   if (error instanceof AllModelsBusyError) {
-    return "DZD Learn AI is very busy right now. Please wait a minute and send your message again.";
+    return "TheStudent AI is very busy right now. Please wait a minute and send your message again.";
   }
   if (error instanceof Error && error.name === "DzdTimeoutError") {
-    return "DZD Learn AI took too long to answer. Please try a shorter question.";
+    return "TheStudent AI took too long to answer. Please try a shorter question.";
   }
-  return "DZD Learn AI couldn't finish this reply. Please send your message again.";
+  return "TheStudent AI couldn't finish this reply. Please send your message again.";
 }

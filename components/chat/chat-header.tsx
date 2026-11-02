@@ -36,7 +36,7 @@ function PureChatHeader({
       </Button>
 
       <Link
-        aria-label="DZD Learn home"
+        aria-label="TheStudent home"
         className="flex items-center rounded-lg px-1 md:hidden"
         href="/"
       >

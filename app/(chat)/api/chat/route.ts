@@ -158,7 +158,7 @@ export async function POST(request: Request) {
       return new ChatbotError("unauthorized:chat").toResponse();
     }
 
-    // Always DZD Learn AI: the model behind each reply is picked on the
+    // Always TheStudent AI: the model behind each reply is picked on the
     // server (lib/ai/router.ts). A model id sent by an older client is
     // ignored.
     const chatModel = DZD_LEARN_MODEL_ID;
@@ -333,7 +333,7 @@ export async function POST(request: Request) {
           clearHealthCheckTimer();
         };
 
-        // DZD Learn AI: the Space's progress updates and tool telemetry are
+        // TheStudent AI: the Space's progress updates and tool telemetry are
         // shown as one data part, updated in place and saved with the reply.
         const dzdActivityId = generateUUID();
         const dzd: { activity: DzdActivityData | null } = { activity: null };
@@ -400,7 +400,7 @@ export async function POST(request: Request) {
             supportsTools,
             webSearch: toolSettings.webSearch,
           });
-        // If the reply falls back to DZD's own model: it searches the web on
+        // If the reply falls back to TheStudent's own model: it searches the web on
         // its own server and has none of the website's tools.
         const dzdInstructions =
           voiceInstructions(true) ??
@@ -527,7 +527,7 @@ export async function POST(request: Request) {
           })
         );
 
-        // Only writes when the reply came from DZD's own model.
+        // Only writes when the reply came from TheStudent's own model.
         const dzdActivityTask = (async () => {
           try {
             await result.finishReason;

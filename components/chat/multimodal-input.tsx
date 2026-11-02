@@ -781,7 +781,9 @@ function PureMultimodalInput({
           </AnimatePresence>
           <PromptInputTextarea
             aria-hidden={voiceActive || undefined}
-            aria-label={editingMessage ? "Edit your message" : "Message DZD AI"}
+            aria-label={
+              editingMessage ? "Edit your message" : "Message TheStudent AI"
+            }
             className={cn(
               "min-h-24 w-full px-4 pt-3.5 pb-1.5 text-[14px] leading-relaxed transition-opacity duration-200 placeholder:text-muted-foreground/45",
               voiceActive && "pointer-events-none opacity-0"
@@ -901,7 +903,7 @@ function PureMultimodalInput({
           initial={{ opacity: 0 }}
           transition={{ delay: 0.5, duration: 0.5 }}
         >
-          By using DZD Learn AI, you agree to our{" "}
+          By using TheStudent AI, you agree to our{" "}
           <a
             className="font-medium text-foreground/80 underline decoration-foreground/30 underline-offset-[3px] transition-colors hover:text-foreground hover:decoration-foreground/70"
             href={TERMS_URL}
@@ -1038,7 +1040,7 @@ const AttachmentsButton = memo(PureAttachmentsButton);
 
 /**
  * The assistant's name next to the + / attach button. Students always talk
- * to DZD Learn AI; the server picks the model behind each reply.
+ * to TheStudent AI; the server picks the model behind each reply.
  */
 function DzdLearnLabel() {
   return (
@@ -1047,13 +1049,13 @@ function DzdLearnLabel() {
       data-testid="assistant-label"
     >
       <DzdLogoMark className="size-4 shrink-0" size={16} />
-      <span className="truncate">DZD Learn AI</span>
+      <span className="truncate">TheStudent AI</span>
     </div>
   );
 }
 
 /**
- * Shown while DZD AI is answering: a red stop square inside a spinning
+ * Shown while TheStudent AI is answering: a red stop square inside a spinning
  * ring. Stopping keeps what was written and adds a "stopped" notice.
  */
 function PureStopButton({

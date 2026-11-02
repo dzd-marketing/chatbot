@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * Text extraction for documents students upload or DZD AI reads from the
+ * Text extraction for documents students upload or TheStudent AI reads from the
  * web: PDF (unpdf, a serverless build of Mozilla's pdf.js), Word .docx
  * (mammoth) and plain text / Markdown. Scanned PDFs have no text layer, so
  * they produce an error asking for photos instead.

@@ -24,7 +24,7 @@ import {
 import { texToOmml } from "./omml";
 
 /**
- * Markdown (the format of DZD AI's text documents) -> Word .docx, in the
+ * Markdown (the format of TheStudent AI's text documents) -> Word .docx, in the
  * browser. Headings, paragraphs, bold/italic/strike/code, links, bullet and
  * numbered lists, tables, code blocks, quotes and rules are kept. Sinhala
  * and Tamil use "Nirmala UI" (included with Windows) as the complex-script
@@ -345,7 +345,7 @@ export function markdownToDocxDocument(title: string, source: string) {
   ];
 
   return new Document({
-    creator: "DZD Learn",
+    creator: "TheStudent",
     numbering: {
       config: [
         {

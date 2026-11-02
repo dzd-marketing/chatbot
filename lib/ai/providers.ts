@@ -18,7 +18,7 @@ export const myProvider = isTestEnvironment
   : null;
 
 /**
- * DZD Learn AI. Every request is routed on the server to a model that is
+ * TheStudent AI. Every request is routed on the server to a model that is
  * free right now (lib/ai/router.ts); `modelId` is kept for older callers.
  */
 export function getLanguageModel(
