@@ -13,10 +13,12 @@ import { useFormStatus } from "react-dom";
 
 import { BrandMark, LoaderIcon } from "@/components/chat/icons";
 import {
-  APP_TOKEN_PATTERN,
-  HANDSHAKE_TYPE,
+  describeAppBridge,
+  HANDSHAKE_EVENT,
   LOGGED_OUT_FLAG,
+  looksLikeAppWebView,
   readAppToken,
+  waitForAppToken,
 } from "@/lib/thestudent/android";
 import { type LoginActionState, login } from "../actions";
 
@@ -67,6 +69,7 @@ export default function Page() {
   const [done, setDone] = useState(false);
   const [appBusy, setAppBusy] = useState(false);
   const [appMessage, setAppMessage] = useState<string | null>(null);
+  const [appDetails, setAppDetails] = useState<string | null>(null);
   const appBusyRef = useRef(false);
 
   const [state, formAction] = useActionState<LoginActionState, FormData>(
@@ -90,6 +93,7 @@ export default function Page() {
       appBusyRef.current = true;
       setAppBusy(true);
       setAppMessage(null);
+      setAppDetails(null);
       try {
         const response = await fetch("/api/auth/login-token", {
           body: JSON.stringify({ token }),
@@ -138,26 +142,31 @@ export default function Page() {
       loginWithToken(token, { quiet: true });
     }
 
-    const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: unknown; token?: unknown } | null;
-      if (
-        event.origin !== window.location.origin ||
-        data?.type !== HANDSHAKE_TYPE ||
-        typeof data.token !== "string" ||
-        !APP_TOKEN_PATTERN.test(data.token)
-      ) {
-        return;
+    // A handshake that arrives later (the capture script fires this event).
+    const onHandshake = () => {
+      const late = readAppToken();
+      if (late) {
+        loginWithToken(late, { quiet: true });
       }
-      loginWithToken(data.token, { quiet: true });
     };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    window.addEventListener(HANDSHAKE_EVENT, onHandshake);
+    return () => window.removeEventListener(HANDSHAKE_EVENT, onHandshake);
   }, [loginWithToken]);
 
-  const handleAppLogin = useCallback(() => {
-    const token = readAppToken();
+  const handleAppLogin = useCallback(async () => {
+    if (appBusyRef.current) {
+      return;
+    }
+    setAppMessage(null);
+    setAppDetails(null);
+    setAppBusy(true);
+    // The app may still be about to send its handshake: give it a moment.
+    const token = await waitForAppToken(1500);
+    setAppBusy(false);
     if (!token) {
       setAppMessage(NOT_IN_APP);
+      // Inside a WebView, say exactly what was missing (for the app dev).
+      setAppDetails(looksLikeAppWebView() ? describeAppBridge() : null);
       return;
     }
     loginWithToken(token, { quiet: false });
@@ -288,6 +297,11 @@ export default function Page() {
           role="alert"
         >
           {appMessage}
+          {appDetails ? (
+            <span className="mt-2 block break-words font-mono text-[11px] text-muted-foreground/80">
+              {`Details: ${appDetails}`}
+            </span>
+          ) : null}
         </p>
       ) : null}
     </div>

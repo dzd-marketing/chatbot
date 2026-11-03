@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BrandLogo } from "@/components/chat/icons";
+import { HANDSHAKE_CAPTURE_SCRIPT } from "@/lib/thestudent/android";
 
 export default function AuthLayout({
   children,
@@ -8,6 +9,11 @@ export default function AuthLayout({
 }) {
   return (
     <div className="relative flex min-h-dvh w-full flex-col overflow-hidden bg-background">
+      {/* Catches the Android app's login handshake before React loads. */}
+      <script
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: static, first-party script
+        dangerouslySetInnerHTML={{ __html: HANDSHAKE_CAPTURE_SCRIPT }}
+      />
       {/* Soft brand glow + faint grid, purely decorative. */}
       <div
         aria-hidden
