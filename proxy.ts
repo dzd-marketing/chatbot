@@ -34,10 +34,12 @@ export async function proxy(request: NextRequest) {
   }
 
   // Login is required, and only TheStudent sessions count (old guest/local
-  // sessions don't). The token itself is re-verified in auth.ts.
+  // sessions don't). PHP's signed assertion is verified at login, and the
+  // session is bounded by the PHP token's expires_at.
   const signedIn =
     typeof token?.tsId === "number" &&
-    !(typeof token.tsExpiresAt === "number" && Date.now() >= token.tsExpiresAt);
+    typeof token.tsExpiresAt === "number" &&
+    Date.now() < token.tsExpiresAt;
 
   if (pathname === "/login") {
     return signedIn

@@ -1,15 +1,13 @@
 "use client";
 
 import { EyeIcon, EyeOffIcon, LockIcon, MailIcon } from "lucide-react";
-import Form from "next/form";
 import {
-  useActionState,
+  type FormEvent,
   useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
-import { useFormStatus } from "react-dom";
 
 import { BrandMark, LoaderIcon } from "@/components/chat/icons";
 import {
@@ -20,28 +18,50 @@ import {
   readAppToken,
   waitForAppToken,
 } from "@/lib/thestudent/android";
-import { type LoginActionState, login } from "../actions";
 
+const THESTUDENT_AUTH_URL = "https://app.quizontal.site/api/auth.php";
 const FIELD =
   "h-11 w-full rounded-xl border border-border/70 bg-background/60 pr-3 pl-10 text-[14px] text-foreground outline-none transition-[border-color,box-shadow] placeholder:text-muted-foreground/60 focus:border-brand/60 focus:ring-4 focus:ring-brand/10";
-
 const NOT_IN_APP =
   "Please open this screen inside TheStudent Android App to use 1-tap app login, or sign in above with your TheStudent email and password.";
+
+async function readApiResponse(
+  response: Response
+): Promise<Record<string, unknown>> {
+  try {
+    const data: unknown = await response.json();
+    return data && typeof data === "object" && !Array.isArray(data)
+      ? (data as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function responseMessage(
+  data: Record<string, unknown>,
+  fallback: string
+): string {
+  return typeof data.message === "string" && data.message.trim()
+    ? data.message.trim().slice(0, 240)
+    : fallback;
+}
+
+function hasUser(value: unknown): boolean {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
 
 function goToChat() {
   try {
     sessionStorage.removeItem(LOGGED_OUT_FLAG);
   } catch {
-    // storage unavailable
+    // Storage unavailable.
   }
   // Full navigation so every part of the app picks up the new session.
   window.location.replace("/");
 }
 
-function LoginButton({ done }: { done: boolean }) {
-  const { pending } = useFormStatus();
-  const busy = pending || done;
-
+function LoginButton({ busy }: { busy: boolean }) {
   return (
     <button
       aria-disabled={busy}
@@ -67,24 +87,46 @@ export default function Page() {
   const [email, setEmail] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [done, setDone] = useState(false);
+  const [formBusy, setFormBusy] = useState(false);
+  const [formMessage, setFormMessage] = useState<string | null>(null);
   const [appBusy, setAppBusy] = useState(false);
   const [appMessage, setAppMessage] = useState<string | null>(null);
   const [appDetails, setAppDetails] = useState<string | null>(null);
   const appBusyRef = useRef(false);
+  const formBusyRef = useRef(false);
 
-  const [state, formAction] = useActionState<LoginActionState, FormData>(
-    login,
-    { status: "idle" }
-  );
-
-  useEffect(() => {
-    if (state.status === "success") {
+  const establishSession = useCallback(
+    async (token: string, webAssertion: string) => {
+      let response: Response;
+      try {
+        response = await fetch("/api/auth/login-token", {
+          body: JSON.stringify({ token, web_assertion: webAssertion }),
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+      } catch (cause) {
+        throw new Error("Could not start your session. Please try again.", {
+          cause,
+        });
+      }
+      const data = await readApiResponse(response);
+      if (!response.ok) {
+        throw new Error(
+          responseMessage(
+            data,
+            "Could not start your session. Please try again."
+          )
+        );
+      }
       setDone(true);
       goToChat();
-    }
-  }, [state]);
+    },
+    []
+  );
 
-  /** Sends the app's token to the server, which verifies it with auth.php. */
+  /** The browser verifies with PHP directly; only the signed assertion is trusted by Next.js. */
   const loginWithToken = useCallback(
     async (token: string, { quiet }: { quiet: boolean }) => {
       if (appBusyRef.current) {
@@ -95,33 +137,52 @@ export default function Page() {
       setAppMessage(null);
       setAppDetails(null);
       try {
-        const response = await fetch("/api/auth/login-token", {
-          body: JSON.stringify({ token }),
-          cache: "no-store",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          method: "POST",
-        });
-        if (response.ok) {
-          setDone(true);
-          goToChat();
-          return;
+        // No custom headers: this GET remains a CORS-simple request.
+        let verifyResponse: Response;
+        try {
+          verifyResponse = await fetch(
+            `${THESTUDENT_AUTH_URL}?action=me&token=${encodeURIComponent(token)}`,
+            { cache: "no-store", credentials: "omit" }
+          );
+        } catch (cause) {
+          throw new Error(
+            "TheStudent could not be reached. Please try again.",
+            {
+              cause,
+            }
+          );
         }
-        const data = (await response.json().catch(() => ({}))) as {
-          message?: string;
-        };
-        if (!quiet) {
-          setAppMessage(data.message ?? "App login failed. Please try again.");
+        const verifyData = await readApiResponse(verifyResponse);
+        const webAssertion =
+          typeof verifyData.web_assertion === "string"
+            ? verifyData.web_assertion
+            : "";
+        if (
+          !verifyResponse.ok ||
+          verifyData.status !== "success" ||
+          !hasUser(verifyData.user) ||
+          !webAssertion
+        ) {
+          const fallbackMessage =
+            verifyResponse.status === 401
+              ? "Your TheStudent app session has expired. Sign in again in the app, or use your email and password."
+              : "TheStudent could not verify this app session. Please try again.";
+          throw new Error(responseMessage(verifyData, fallbackMessage));
         }
-      } catch {
+        await establishSession(token, webAssertion);
+      } catch (error) {
         if (!quiet) {
-          setAppMessage("Network error. Please check your connection.");
+          setAppMessage(
+            error instanceof Error && error.message
+              ? error.message
+              : "TheStudent could not be reached. Please try again."
+          );
         }
       }
       appBusyRef.current = false;
       setAppBusy(false);
     },
-    []
+    [establishSession]
   );
 
   // Inside the Android app: sign in automatically with the app's session,
@@ -131,7 +192,7 @@ export default function Page() {
     try {
       blocked = sessionStorage.getItem(LOGGED_OUT_FLAG) === "1";
     } catch {
-      // storage unavailable
+      // Storage unavailable.
     }
     if (blocked) {
       return;
@@ -173,20 +234,82 @@ export default function Page() {
   }, [loginWithToken]);
 
   const handleSubmit = useCallback(
-    (formData: FormData) => {
-      setEmail(String(formData.get("email") ?? ""));
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (formBusyRef.current || done) {
+        return;
+      }
+      formBusyRef.current = true;
+      setFormBusy(true);
+      setFormMessage(null);
       setAppMessage(null);
-      formAction(formData);
+
+      const formData = new FormData(event.currentTarget);
+      const submittedEmail = String(formData.get("email") ?? "").trim();
+      const password = String(formData.get("password") ?? "");
+      setEmail(submittedEmail);
+
+      try {
+        let loginResponse: Response;
+        try {
+          // JSON POST may CORS-preflight; auth.php v3.6.7 must allow OPTIONS.
+          loginResponse = await fetch(
+            `${THESTUDENT_AUTH_URL}?action=web_login`,
+            {
+              body: JSON.stringify({
+                client: "web",
+                email: submittedEmail,
+                password,
+              }),
+              cache: "no-store",
+              credentials: "omit",
+              headers: { "Content-Type": "application/json" },
+              method: "POST",
+            }
+          );
+        } catch (cause) {
+          throw new Error(
+            "TheStudent could not be reached. Please check your connection and try again.",
+            { cause }
+          );
+        }
+
+        const loginData = await readApiResponse(loginResponse);
+        const token =
+          typeof loginData.token === "string" ? loginData.token : "";
+        const webAssertion =
+          typeof loginData.web_assertion === "string"
+            ? loginData.web_assertion
+            : "";
+        if (
+          !loginResponse.ok ||
+          loginData.status !== "success" ||
+          !token ||
+          !hasUser(loginData.user) ||
+          !webAssertion
+        ) {
+          const fallbackMessage =
+            loginResponse.status === 403 && loginData.status !== "error"
+              ? "TheStudent could not be reached. Please try again."
+              : "Invalid email or password.";
+          throw new Error(responseMessage(loginData, fallbackMessage));
+        }
+        await establishSession(token, webAssertion);
+      } catch (error) {
+        setFormMessage(
+          error instanceof Error && error.message
+            ? error.message
+            : "Could not log you in. Please try again."
+        );
+      } finally {
+        formBusyRef.current = false;
+        setFormBusy(false);
+      }
     },
-    [formAction]
+    [done, establishSession]
   );
 
   const togglePassword = useCallback(() => setShowPassword((v) => !v), []);
-
-  const error =
-    state.status === "failed" || state.status === "invalid_data"
-      ? state.message
-      : undefined;
 
   return (
     <div className="w-full rounded-2xl border border-border/60 bg-card/70 p-6 shadow-[var(--shadow-float)] backdrop-blur-xl sm:p-8">
@@ -199,7 +322,7 @@ export default function Page() {
         </p>
       </div>
 
-      <Form action={handleSubmit} className="flex flex-col gap-4">
+      <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
         <div className="flex flex-col gap-1.5">
           <label
             className="font-medium text-[13px] text-foreground/80"
@@ -256,17 +379,17 @@ export default function Page() {
           </div>
         </div>
 
-        {error ? (
+        {formMessage ? (
           <p
             className="rounded-lg bg-destructive/10 px-3 py-2 text-[13px] text-destructive"
             role="alert"
           >
-            {error}
+            {formMessage}
           </p>
         ) : null}
 
-        <LoginButton done={done} />
-      </Form>
+        <LoginButton busy={formBusy || done} />
+      </form>
 
       <div className="my-5 flex items-center gap-3 text-[12px] text-muted-foreground">
         <span className="h-px flex-1 bg-border" />

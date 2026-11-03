@@ -65,7 +65,7 @@ export async function upsertTheStudentUser(
 ): Promise<string> {
   const values = {
     email: profile.email,
-    emailVerified: true,
+    emailVerified: profile.isVerified ?? true,
     image: profile.avatarUrl,
     name: profile.name,
     profile,

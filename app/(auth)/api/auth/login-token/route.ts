@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { signIn } from "@/app/(auth)/auth";
-import { TOKEN_PATTERN, verifyToken } from "@/lib/thestudent/api";
+import {
+  TOKEN_PATTERN,
+  theStudentProfileFromUser,
+  verifyTheStudentWebAssertion,
+} from "@/lib/thestudent/api";
 import { isSameOrigin, NO_STORE } from "@/lib/thestudent/same-origin";
 
-/**
- * 1-tap login from TheStudent Android app. The page reads the app's bearer
- * token from window.TheStudentAndroid and posts it here; auth.php
- * (action=me) decides whether it is valid. Body: {"token":"<hex>"}.
- */
+/** Exchange a PHP-signed login assertion for the encrypted HttpOnly session. */
 export async function POST(request: Request) {
   const reply = (status: number, message?: string) =>
     NextResponse.json(
@@ -23,31 +23,36 @@ export async function POST(request: Request) {
   }
 
   let token = "";
+  let assertion = "";
   try {
-    const body = (await request.json()) as { token?: unknown };
+    const body = (await request.json()) as {
+      token?: unknown;
+      web_assertion?: unknown;
+    };
     token = typeof body?.token === "string" ? body.token : "";
+    assertion =
+      typeof body?.web_assertion === "string" ? body.web_assertion : "";
   } catch {
     // handled below
   }
-  if (!TOKEN_PATTERN.test(token)) {
-    return reply(400, "Invalid app session.");
-  }
 
-  const result = await verifyToken(token);
-  if (!result.ok) {
-    return result.definitive
-      ? reply(
-          401,
-          "Your TheStudent app session has expired. Sign in again in the app, or use your email and password."
-        )
-      : reply(
-          503,
-          "TheStudent is not reachable right now. Please try again in a moment."
-        );
+  if (!TOKEN_PATTERN.test(token)) {
+    return reply(400, "Invalid TheStudent session.");
+  }
+  const claims = verifyTheStudentWebAssertion(assertion, token);
+  if (!claims || !theStudentProfileFromUser(claims.user)) {
+    return reply(
+      401,
+      "Could not verify your TheStudent session. Please sign in again."
+    );
   }
 
   try {
-    await signIn("thestudent", { redirect: false, token });
+    await signIn("thestudent", {
+      redirect: false,
+      token,
+      web_assertion: assertion,
+    });
   } catch {
     return reply(500, "Could not start your session. Please try again.");
   }

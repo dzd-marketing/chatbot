@@ -1,17 +1,15 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
+import {
+  createHash,
+  createPublicKey,
+  timingSafeEqual,
+  verify as verifySignature,
+} from "node:crypto";
 
 /**
- * Server-side client for TheStudent PHP API (auth.php). Never import this
- * from client code: it holds the optional web client key and handles
- * students' bearer tokens. Tokens, passwords and response bodies are never
- * logged; only short reason codes are.
- *
- *   THESTUDENT_API_BASE         https origin of the PHP API (optional)
- *   ASSISTANT_WEB_ORIGIN        https origin of this site (optional)
- *   THESTUDENT_WEB_CLIENT_KEY   sent as X-TheStudent-Key when set (optional)
- *   THESTUDENT_API_USER_AGENT   User-Agent for auth.php calls (optional)
+ * Server-side TheStudent helpers. Never import this module from client code:
+ * it handles session tokens and verifies PHP's Ed25519 web assertions.
  */
 
 export const DEFAULT_THESTUDENT_API_BASE = "https://app.quizontal.site";
@@ -21,12 +19,13 @@ export const DEFAULT_ASSISTANT_WEB_ORIGIN =
 /** Bearer tokens issued by auth.php: hex, 32-256 chars (normally 64). */
 export const TOKEN_PATTERN = /^[A-Fa-f0-9]{32,256}$/;
 
-const TIMEOUT_MS = 10_000;
-const VERIFY_CACHE_MS = 60_000;
-const VERIFY_CACHE_MAX = 500;
-
-const UNREACHABLE =
-  "TheStudent is not reachable right now. Please try again in a moment.";
+const DEFAULT_ASSERTION_PUBKEY_SPKI =
+  "MCowBQYDK2VwAyEAo/qLSdwO0uNQnrh8EYmxYM1vwnQmvnatklK0bwXcWFM=";
+const MAX_ASSERTION_BYTES = 32 * 1024;
+const MAX_ASSERTION_LIFETIME_SECONDS = 10 * 60;
+const ASSERTION_EXPIRY_LEEWAY_SECONDS = 30;
+const ASSERTION_IAT_LEEWAY_SECONDS = 60;
+const API_TIMEOUT_MS = 10_000;
 
 function httpsOrigin(name: string, fallback: string): string {
   const raw = process.env[name]?.trim();
@@ -39,7 +38,7 @@ function httpsOrigin(name: string, fallback: string): string {
       return url.origin;
     }
   } catch {
-    // fall through
+    // Fall through to the safe default.
   }
   console.error(`[thestudent] ${name} is not a valid https URL; using default`);
   return fallback;
@@ -51,32 +50,13 @@ function endpoint(action: string, token?: string): string {
   return token ? `${url}&token=${encodeURIComponent(token)}` : url;
 }
 
-/**
- * The server's Apache (DirectAdmin, PHP-FPM) strips the Authorization
- * header, so auth.php (v3.6.3+) also reads X-TheStudent-Token and &token=.
- * Every token call sends all three. Request URLs are never logged here.
- */
-function tokenHeaders(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
-    "X-TheStudent-Token": token,
-  };
-}
-
-/**
- * Identify server-to-server requests truthfully. The firewall must allow the
- * Vercel egress IP; pretending this is Android/OkHttp cannot bypass an IP rule.
- */
-const DEFAULT_API_USER_AGENT = "TheStudentWeb/1.0";
-
-/** Sent on EVERY auth.php call (web_login, me, logout). */
 function baseHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/json",
     "Content-Type": "application/json",
     Origin: httpsOrigin("ASSISTANT_WEB_ORIGIN", DEFAULT_ASSISTANT_WEB_ORIGIN),
     "User-Agent":
-      process.env.THESTUDENT_API_USER_AGENT?.trim() || DEFAULT_API_USER_AGENT,
+      process.env.THESTUDENT_API_USER_AGENT?.trim() || "TheStudentWeb/1.0",
     "X-TheStudent-Client": "web-assistant",
   };
   const key = process.env.THESTUDENT_WEB_CLIENT_KEY?.trim();
@@ -86,22 +66,49 @@ function baseHeaders(): Record<string, string> {
   return headers;
 }
 
-export type TheStudentSubject = { code: string; label: string };
+function tokenHeaders(token: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${token}`,
+    "X-TheStudent-Token": token,
+  };
+}
 
-/** The subset of the auth.php user this site keeps. */
-export type TheStudentProfile = {
-  id: number;
-  name: string | null;
-  email: string;
-  avatarUrl: string | null;
-  targetExam: string | null;
-  streamOrDegree: string | null;
-  institution: string | null;
+export type TheStudentSubject = {
+  bucket: string | null;
+  code: string;
   examLevel: string | null;
-  medium: string | null;
-  subjects: TheStudentSubject[];
+  label: string;
+  position: number | null;
+};
+
+/** The student profile kept by the chatbot, derived only from signed PHP data. */
+export type TheStudentProfile = {
+  academicComplete: boolean | null;
+  authProvider: string | null;
+  avatarUrl: string | null;
+  degreeProgramme: string | null;
+  email: string;
+  examLevel: string | null;
+  examYear: number | null;
+  expDailyCap: number | null;
+  expRank: number | null;
   expTier: string | null;
+  expToday: number | null;
+  expTotal: number | null;
+  institution: string | null;
+  isVerified: boolean | null;
+  medium: string | null;
+  name: string | null;
+  phone: string | null;
+  profileCompleted: boolean | null;
   role: string | null;
+  streamCode: string | null;
+  streamOrDegree: string | null;
+  studyYear: string | null;
+  subjects: TheStudentSubject[];
+  targetExam: string | null;
+  university: string | null;
+  id: number;
 };
 
 function str(value: unknown, max = 200): string | null {
@@ -110,6 +117,30 @@ function str(value: unknown, max = 200): string | null {
   }
   const trimmed = value.trim();
   return trimmed ? trimmed.slice(0, max) : null;
+}
+
+function finiteInteger(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function bool(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (value === 0 || value === 1) {
+    return value === 1;
+  }
+  return null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function httpsUrl(value: unknown): string | null {
@@ -124,47 +155,74 @@ function httpsUrl(value: unknown): string | null {
   }
 }
 
-function toProfile(raw: unknown): TheStudentProfile | null {
-  if (!raw || typeof raw !== "object") {
+/** Parse and normalize a user object that has already been signature-verified. */
+export function theStudentProfileFromUser(
+  raw: unknown
+): TheStudentProfile | null {
+  const user = asRecord(raw);
+  if (!user) {
     return null;
   }
-  const u = raw as Record<string, unknown>;
-  const id = typeof u.id === "string" ? Number(u.id) : u.id;
-  const email = str(u.email, 255);
-  if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) {
+  const id = finiteInteger(user.id);
+  const email = str(user.email, 255);
+  if (!id || id <= 0 || !email) {
     return null;
   }
-  if (!email) {
-    return null;
-  }
+
+  const exp = asRecord(user.exp);
   const subjects: TheStudentSubject[] = [];
-  if (Array.isArray(u.subjects)) {
-    for (const s of u.subjects.slice(0, 20)) {
-      const code = str((s as Record<string, unknown>)?.code, 64);
-      const label = str((s as Record<string, unknown>)?.label, 120);
+  if (Array.isArray(user.subjects)) {
+    for (const rawSubject of user.subjects.slice(0, 20)) {
+      const subject = asRecord(rawSubject);
+      if (!subject) {
+        continue;
+      }
+      const code = str(subject.code, 64);
+      const label = str(subject.label, 120);
       if (code && label) {
-        subjects.push({ code, label });
+        subjects.push({
+          bucket: str(subject.bucket, 64),
+          code,
+          examLevel: str(subject.exam_level ?? subject.level, 32),
+          label,
+          position: finiteInteger(subject.position),
+        });
       }
     }
   }
+
   return {
-    avatarUrl: httpsUrl(u.avatar_url) ?? httpsUrl(u.profile_picture),
+    academicComplete: bool(user.academic_completed ?? user.academic_complete),
+    authProvider: str(user.auth_provider, 40),
+    avatarUrl: httpsUrl(user.avatar_url) ?? httpsUrl(user.profile_picture),
+    degreeProgramme: str(user.degree_programme),
     email,
-    examLevel: str(u.exam_level, 32),
-    expTier: str(u.exp_tier, 40),
+    examLevel: str(user.exam_level, 32),
+    examYear: finiteInteger(user.exam_year),
+    expDailyCap: finiteInteger(user.exp_daily_cap ?? exp?.daily_cap),
+    expRank: finiteInteger(exp?.rank),
+    expTier: str(user.exp_tier ?? exp?.tier, 40),
+    expToday: finiteInteger(user.exp_today ?? exp?.today),
+    expTotal: finiteInteger(user.exp_total ?? exp?.total),
     id,
-    institution: str(u.institution),
-    medium: str(u.medium, 40),
-    name: str(u.name, 120),
-    role: str(u.role, 40),
-    streamOrDegree: str(u.stream_or_degree),
+    institution: str(user.institution),
+    isVerified: bool(user.is_email_verified ?? user.is_verified),
+    medium: str(user.medium, 40),
+    name: str(user.full_name ?? user.name, 120),
+    phone: str(user.phone, 40),
+    profileCompleted: bool(user.profile_completed),
+    role: str(user.role, 40),
+    streamCode: str(user.stream_code, 64),
+    streamOrDegree: str(user.stream_or_degree),
+    studyYear: str(user.study_year, 32),
     subjects,
-    targetExam: str(u.target_exam),
+    targetExam: str(user.target_exam),
+    university: str(user.university),
   };
 }
 
 /** "2026-12-03 14:22:10" (server time, assumed UTC) -> epoch ms. */
-function parseExpiry(value: unknown): number | null {
+export function parseTheStudentExpiry(value: unknown): number | null {
   const raw = str(value, 40);
   if (!raw) {
     return null;
@@ -177,152 +235,153 @@ function parseExpiry(value: unknown): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-async function readJson(response: Response): Promise<Record<string, unknown>> {
-  try {
-    const data: unknown = await response.json();
-    return data && typeof data === "object"
-      ? (data as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
+export type TheStudentWebAssertionClaims = {
+  aud: string;
+  exp: number;
+  expires_at: string;
+  iat: number;
+  iss: string;
+  token_hash: string;
+  user: Record<string, unknown>;
+};
+
+function decodeBase64Url(value: string): Buffer | null {
+  if (!/^[A-Za-z0-9_-]+={0,2}$/.test(value)) {
+    return null;
   }
+  const unpadded = value.replace(/[=]+$/, "");
+  const decoded = Buffer.from(unpadded, "base64url");
+  return decoded.toString("base64url") === unpadded ? decoded : null;
 }
 
-// ---- verified-token cache (keyed by a hash, never the token itself) ----
+/**
+ * Verify auth.php v3.6.7's Ed25519 assertion. The signature covers the exact
+ * ASCII payload segment, not the decoded JSON. When rawToken is supplied, the
+ * signed token_hash is required and compared in constant time.
+ */
+export function verifyTheStudentWebAssertion(
+  assertion: string,
+  rawToken?: string
+): TheStudentWebAssertionClaims | null {
+  const compact = assertion.trim();
+  if (!compact || compact.length > MAX_ASSERTION_BYTES) {
+    return null;
+  }
+  const parts = compact.split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    return null;
+  }
+  const [payloadB64, signatureB64] = parts;
+  if (!payloadB64 || !signatureB64) {
+    return null;
+  }
 
-type Verified = { profile: TheStudentProfile; expiresAt: number | null };
-const verifiedCache = new Map<string, Verified & { at: number }>();
+  const payloadBytes = decodeBase64Url(payloadB64);
+  const signatureBytes = decodeBase64Url(signatureB64);
+  if (!payloadBytes || !signatureBytes || signatureBytes.length !== 64) {
+    return null;
+  }
 
-function tokenKey(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
+  let claims: Record<string, unknown>;
+  try {
+    const encodedKey =
+      process.env.THESTUDENT_ASSERTION_PUBKEY_SPKI?.trim() ||
+      DEFAULT_ASSERTION_PUBKEY_SPKI;
+    const publicKeyBytes = Buffer.from(encodedKey, "base64");
+    if (!encodedKey || publicKeyBytes.toString("base64") !== encodedKey) {
+      return null;
+    }
+    const publicKey = createPublicKey({
+      format: "der",
+      key: publicKeyBytes,
+      type: "spki",
+    });
+    if (publicKey.asymmetricKeyType !== "ed25519") {
+      return null;
+    }
+    if (
+      !verifySignature(
+        null,
+        Buffer.from(payloadB64, "utf8"),
+        publicKey,
+        signatureBytes
+      )
+    ) {
+      return null;
+    }
+    claims = asRecord(JSON.parse(payloadBytes.toString("utf8"))) ?? {};
+  } catch {
+    return null;
+  }
 
-function remember(token: string, verified: Verified) {
-  if (verifiedCache.size >= VERIFY_CACHE_MAX) {
-    const oldest = verifiedCache.keys().next().value;
-    if (oldest) {
-      verifiedCache.delete(oldest);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const expectedAudience = httpsOrigin(
+    "ASSISTANT_WEB_ORIGIN",
+    DEFAULT_ASSISTANT_WEB_ORIGIN
+  );
+  if (claims.iss !== DEFAULT_THESTUDENT_API_BASE) {
+    return null;
+  }
+  if (claims.aud !== expectedAudience) {
+    return null;
+  }
+  if (
+    typeof claims.iat !== "number" ||
+    !Number.isSafeInteger(claims.iat) ||
+    claims.iat > nowSeconds + ASSERTION_IAT_LEEWAY_SECONDS
+  ) {
+    return null;
+  }
+  if (
+    typeof claims.exp !== "number" ||
+    !Number.isSafeInteger(claims.exp) ||
+    nowSeconds > claims.exp + ASSERTION_EXPIRY_LEEWAY_SECONDS ||
+    claims.exp < claims.iat ||
+    claims.exp - claims.iat > MAX_ASSERTION_LIFETIME_SECONDS
+  ) {
+    return null;
+  }
+  const tokenExpiresAt = parseTheStudentExpiry(claims.expires_at);
+  if (
+    typeof claims.expires_at !== "string" ||
+    !tokenExpiresAt ||
+    tokenExpiresAt <= Date.now()
+  ) {
+    return null;
+  }
+
+  const tokenHash = claims.token_hash;
+  if (typeof tokenHash !== "string" || !/^[a-fA-F0-9]{64}$/.test(tokenHash)) {
+    return null;
+  }
+  if (rawToken !== undefined) {
+    const normalizedToken = rawToken.trim();
+    if (!TOKEN_PATTERN.test(normalizedToken)) {
+      return null;
+    }
+    const expectedHash = createHash("sha256").update(normalizedToken).digest();
+    const actualHash = Buffer.from(tokenHash, "hex");
+    if (
+      actualHash.length !== expectedHash.length ||
+      !timingSafeEqual(actualHash, expectedHash)
+    ) {
+      return null;
     }
   }
-  verifiedCache.set(tokenKey(token), { ...verified, at: Date.now() });
+
+  const user = asRecord(claims.user);
+  if (!theStudentProfileFromUser(user)) {
+    return null;
+  }
+
+  return claims as TheStudentWebAssertionClaims;
 }
 
-export function forgetToken(token: string) {
-  verifiedCache.delete(tokenKey(token));
-}
-
-// ---- web_login ----
-
-export type WebLoginResult =
-  | { ok: true; token: string; profile: TheStudentProfile }
-  | { ok: false; message: string };
-
-export async function webLogin(
-  email: string,
-  password: string
-): Promise<WebLoginResult> {
-  let response: Response;
-  try {
-    response = await fetch(endpoint("web_login"), {
-      body: JSON.stringify({ client: "web", email, password }),
-      cache: "no-store",
-      headers: baseHeaders(),
-      method: "POST",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-  } catch {
-    console.warn("[thestudent] web_login unreachable");
-    return { message: UNREACHABLE, ok: false };
-  }
-
-  const data = await readJson(response);
-  if (!response.ok || data.status !== "success") {
-    console.warn(`[thestudent] web_login rejected (${response.status})`);
-    const firewallBlock = response.status === 403 && data.status !== "error";
-    const message =
-      str(data.message, 200) ??
-      (response.status >= 500 || firewallBlock
-        ? UNREACHABLE
-        : "Could not log you in.");
-    return { message, ok: false };
-  }
-
-  const token = typeof data.token === "string" ? data.token : "";
-  const profile = toProfile(data.user);
-  if (!(TOKEN_PATTERN.test(token) && profile)) {
-    console.warn("[thestudent] web_login returned an unexpected payload");
-    return { message: UNREACHABLE, ok: false };
-  }
-
-  remember(token, { expiresAt: parseExpiry(data.expires_at), profile });
-  return { ok: true, profile, token };
-}
-
-// ---- me (token verification) ----
-
-export type VerifyResult =
-  | ({ ok: true } & Verified)
-  /** Definitive: auth.php returned 401 or a JSON auth error (403). */
-  | { ok: false; definitive: boolean };
-
-export async function verifyToken(token: string): Promise<VerifyResult> {
-  if (!TOKEN_PATTERN.test(token)) {
-    return { definitive: true, ok: false };
-  }
-  const cached = verifiedCache.get(tokenKey(token));
-  if (cached && Date.now() - cached.at < VERIFY_CACHE_MS) {
-    return { expiresAt: cached.expiresAt, ok: true, profile: cached.profile };
-  }
-
-  let response: Response;
-  try {
-    response = await fetch(endpoint("me", token), {
-      cache: "no-store",
-      headers: { ...baseHeaders(), ...tokenHeaders(token) },
-      method: "GET",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-  } catch {
-    console.warn("[thestudent] me unreachable");
-    return { definitive: false, ok: false };
-  }
-
-  if (response.status === 401) {
-    console.warn("[thestudent] me rejected the token (401)");
-    forgetToken(token);
-    return { definitive: true, ok: false };
-  }
-  if (response.status === 403) {
-    const contentType =
-      response.headers.get("content-type")?.toLowerCase() ?? "";
-    const data = await readJson(response);
-    // The host's firewall returns an HTML 403 before PHP executes. Only
-    // treat a JSON auth.php error as a definitive token rejection.
-    if (contentType.includes("application/json") && data.status === "error") {
-      console.warn("[thestudent] me rejected the token (403)");
-      forgetToken(token);
-      return { definitive: true, ok: false };
-    }
-    console.warn("[thestudent] me blocked before auth.php (403)");
-    return { definitive: false, ok: false };
-  }
-  const data = await readJson(response);
-  const profile =
-    response.ok && data.status === "success" && toProfile(data.user);
-  if (!profile) {
-    console.warn(`[thestudent] me failed (${response.status})`);
-    return { definitive: false, ok: false };
-  }
-
-  const verified = { expiresAt: parseExpiry(data.expires_at), profile };
-  remember(token, verified);
-  return { ok: true, ...verified };
-}
-
-// ---- logout ----
-
+/**
+ * Best-effort revocation. The local encrypted session is cleared even if the
+ * external API is temporarily unreachable.
+ */
 export async function revokeToken(token: string): Promise<void> {
-  forgetToken(token);
   if (!TOKEN_PATTERN.test(token)) {
     return;
   }
@@ -330,12 +389,9 @@ export async function revokeToken(token: string): Promise<void> {
     const response = await fetch(endpoint("logout", token), {
       body: "{}",
       cache: "no-store",
-      headers: {
-        ...baseHeaders(),
-        ...tokenHeaders(token),
-      },
+      headers: { ...baseHeaders(), ...tokenHeaders(token) },
       method: "POST",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
     });
     if (!response.ok) {
       console.warn(`[thestudent] logout failed (${response.status})`);
