@@ -17,6 +17,7 @@ import postgres from "postgres";
 import type { ArtifactKind } from "@/components/chat/artifact";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
 import { ChatbotError } from "../errors";
+import type { TheStudentProfile } from "../thestudent/api";
 import {
   type Chat,
   chat,
@@ -52,6 +53,33 @@ export async function createUser(email: string, password: string) {
     throw new ChatbotError("bad_request:database", {
       cause: error,
     });
+  }
+}
+
+/**
+ * Creates or refreshes the web user for a verified TheStudent account,
+ * matched ONLY by TheStudent users.id (never by email). Returns our user id.
+ */
+export async function upsertTheStudentUser(
+  profile: TheStudentProfile
+): Promise<string> {
+  const values = {
+    email: profile.email,
+    emailVerified: true,
+    image: profile.avatarUrl,
+    name: profile.name,
+    profile,
+    updatedAt: new Date(),
+  };
+  try {
+    const [row] = await db
+      .insert(user)
+      .values({ ...values, thestudentId: profile.id })
+      .onConflictDoUpdate({ set: values, target: user.thestudentId })
+      .returning({ id: user.id });
+    return row.id;
+  } catch (error) {
+    throw new ChatbotError("bad_request:database", { cause: error });
   }
 }
 

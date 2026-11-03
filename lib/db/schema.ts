@@ -2,6 +2,7 @@ import type { InferSelectModel } from "drizzle-orm";
 import {
   boolean,
   foreignKey,
+  integer,
   json,
   pgTable,
   primaryKey,
@@ -13,13 +14,17 @@ import {
 
 export const user = pgTable("User", {
   createdAt: timestamp("createdAt").notNull().defaultNow(),
-  email: varchar("email", { length: 64 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
   emailVerified: boolean("emailVerified").notNull().default(false),
   id: uuid("id").primaryKey().notNull().defaultRandom(),
   image: text("image"),
   isAnonymous: boolean("isAnonymous").notNull().default(false),
   name: text("name"),
   password: varchar("password", { length: 64 }),
+  /** Display/profile fields from TheStudent (auth.php), refreshed on login. */
+  profile: json("profile"),
+  /** TheStudent users.id: the only key used to match accounts. */
+  thestudentId: integer("thestudentId").unique("User_thestudentId_unique"),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 });
 

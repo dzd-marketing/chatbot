@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { guestRegex, isDevelopmentEnvironment } from "./lib/constants";
+import { isDevelopmentEnvironment } from "./lib/constants";
 
 const PUBLIC_PATHS = new Set(["/terms", "/privacy"]);
 
@@ -33,8 +33,11 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL(`${base}/login`, request.url));
   }
 
-  // Login is required. Sessions from the old guest mode no longer count.
-  const signedIn = Boolean(token) && !guestRegex.test(token?.email ?? "");
+  // Login is required, and only TheStudent sessions count (old guest/local
+  // sessions don't). The token itself is re-verified in auth.ts.
+  const signedIn =
+    typeof token?.tsId === "number" &&
+    !(typeof token.tsExpiresAt === "number" && Date.now() >= token.tsExpiresAt);
 
   if (pathname === "/login") {
     return signedIn

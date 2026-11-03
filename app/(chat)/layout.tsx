@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import Script from "next/script";
 import { Suspense } from "react";
 import { Toaster } from "sonner";
@@ -28,6 +29,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 async function SidebarShell({ children }: { children: React.ReactNode }) {
   const [session, cookieStore] = await Promise.all([auth(), cookies()]);
   const isCollapsed = cookieStore.get("sidebar_state")?.value !== "true";
+
+  // The session ended server-side (token revoked or expired).
+  if (!session?.user) {
+    redirect("/login");
+  }
 
   return (
     <SidebarProvider defaultOpen={!isCollapsed}>

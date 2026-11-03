@@ -2,19 +2,39 @@
 
 import { EyeIcon, EyeOffIcon, LockIcon, MailIcon } from "lucide-react";
 import Form from "next/form";
-import { useActionState, useCallback, useEffect, useState } from "react";
+import {
+  useActionState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useFormStatus } from "react-dom";
 
 import { BrandMark, LoaderIcon } from "@/components/chat/icons";
+import {
+  APP_TOKEN_PATTERN,
+  HANDSHAKE_TYPE,
+  LOGGED_OUT_FLAG,
+  readAppToken,
+} from "@/lib/thestudent/android";
 import { type LoginActionState, login } from "../actions";
 
 const FIELD =
   "h-11 w-full rounded-xl border border-border/70 bg-background/60 pr-3 pl-10 text-[14px] text-foreground outline-none transition-[border-color,box-shadow] placeholder:text-muted-foreground/60 focus:border-brand/60 focus:ring-4 focus:ring-brand/10";
 
-const ERRORS: Partial<Record<LoginActionState["status"], string>> = {
-  failed: "Incorrect email or password.",
-  invalid_data: "Enter a valid email and a password of at least 6 characters.",
-};
+const NOT_IN_APP =
+  "Please open this screen inside TheStudent Android App to use 1-tap app login, or sign in above with your TheStudent email and password.";
+
+function goToChat() {
+  try {
+    sessionStorage.removeItem(LOGGED_OUT_FLAG);
+  } catch {
+    // storage unavailable
+  }
+  // Full navigation so every part of the app picks up the new session.
+  window.location.replace("/");
+}
 
 function LoginButton({ done }: { done: boolean }) {
   const { pending } = useFormStatus();
@@ -45,6 +65,9 @@ export default function Page() {
   const [email, setEmail] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [done, setDone] = useState(false);
+  const [appBusy, setAppBusy] = useState(false);
+  const [appMessage, setAppMessage] = useState<string | null>(null);
+  const appBusyRef = useRef(false);
 
   const [state, formAction] = useActionState<LoginActionState, FormData>(
     login,
@@ -54,14 +77,96 @@ export default function Page() {
   useEffect(() => {
     if (state.status === "success") {
       setDone(true);
-      // Full navigation so every part of the app picks up the new session.
-      window.location.replace("/");
+      goToChat();
     }
   }, [state]);
+
+  /** Sends the app's token to the server, which verifies it with auth.php. */
+  const loginWithToken = useCallback(
+    async (token: string, { quiet }: { quiet: boolean }) => {
+      if (appBusyRef.current) {
+        return;
+      }
+      appBusyRef.current = true;
+      setAppBusy(true);
+      setAppMessage(null);
+      try {
+        const response = await fetch("/api/auth/login-token", {
+          body: JSON.stringify({ token }),
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+        if (response.ok) {
+          setDone(true);
+          goToChat();
+          return;
+        }
+        const data = (await response.json().catch(() => ({}))) as {
+          message?: string;
+        };
+        if (!quiet) {
+          setAppMessage(data.message ?? "App login failed. Please try again.");
+        }
+      } catch {
+        if (!quiet) {
+          setAppMessage("Network error. Please check your connection.");
+        }
+      }
+      appBusyRef.current = false;
+      setAppBusy(false);
+    },
+    []
+  );
+
+  // Inside the Android app: sign in automatically with the app's session,
+  // unless the student just logged out of this site.
+  useEffect(() => {
+    let blocked = false;
+    try {
+      blocked = sessionStorage.getItem(LOGGED_OUT_FLAG) === "1";
+    } catch {
+      // storage unavailable
+    }
+    if (blocked) {
+      return;
+    }
+
+    const token = readAppToken();
+    if (token) {
+      loginWithToken(token, { quiet: true });
+    }
+
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: unknown; token?: unknown } | null;
+      if (
+        event.origin !== window.location.origin ||
+        data?.type !== HANDSHAKE_TYPE ||
+        typeof data.token !== "string" ||
+        !APP_TOKEN_PATTERN.test(data.token)
+      ) {
+        return;
+      }
+      loginWithToken(data.token, { quiet: true });
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [loginWithToken]);
+
+  const handleAppLogin = useCallback(() => {
+    const token = readAppToken();
+    if (!token) {
+      setAppMessage(NOT_IN_APP);
+      return;
+    }
+    loginWithToken(token, { quiet: false });
+  }, [loginWithToken]);
 
   const handleSubmit = useCallback(
     (formData: FormData) => {
       setEmail(String(formData.get("email") ?? ""));
+      setAppMessage(null);
       formAction(formData);
     },
     [formAction]
@@ -69,7 +174,10 @@ export default function Page() {
 
   const togglePassword = useCallback(() => setShowPassword((v) => !v), []);
 
-  const error = ERRORS[state.status];
+  const error =
+    state.status === "failed" || state.status === "invalid_data"
+      ? state.message
+      : undefined;
 
   return (
     <div className="w-full rounded-2xl border border-border/60 bg-card/70 p-6 shadow-[var(--shadow-float)] backdrop-blur-xl sm:p-8">
@@ -78,7 +186,7 @@ export default function Page() {
           Welcome back
         </h1>
         <p className="text-[14px] text-muted-foreground">
-          Log in to continue to TheStudent AI
+          Log in with your TheStudent account
         </p>
       </div>
 
@@ -94,7 +202,6 @@ export default function Page() {
             <MailIcon className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-3.5 size-4 text-muted-foreground" />
             <input
               autoComplete="email"
-              autoFocus
               className={FIELD}
               defaultValue={email}
               id="email"
@@ -119,7 +226,6 @@ export default function Page() {
               autoComplete="current-password"
               className={`${FIELD} pr-11`}
               id="password"
-              minLength={6}
               name="password"
               placeholder="Enter your password"
               required
@@ -160,12 +266,30 @@ export default function Page() {
       </div>
 
       <button
-        className="flex h-11 w-full cursor-pointer items-center justify-center gap-2.5 rounded-xl border border-border/70 bg-background/60 font-medium text-[14px] text-foreground transition-colors hover:bg-muted"
+        aria-disabled={appBusy || done}
+        className="flex h-11 w-full cursor-pointer items-center justify-center gap-2.5 rounded-xl border border-border/70 bg-background/60 font-medium text-[14px] text-foreground transition-colors hover:bg-muted disabled:cursor-default disabled:opacity-80"
+        disabled={appBusy || done}
+        onClick={handleAppLogin}
         type="button"
       >
-        <BrandMark size={20} />
-        Continue with TheStudent app
+        {appBusy ? (
+          <span className="animate-spin">
+            <LoaderIcon />
+          </span>
+        ) : (
+          <BrandMark size={20} />
+        )}
+        Login with TheStudent Android App
       </button>
+
+      {appMessage ? (
+        <p
+          className="mt-3 rounded-lg bg-muted px-3 py-2 text-center text-[13px] text-muted-foreground"
+          role="alert"
+        >
+          {appMessage}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -2,9 +2,9 @@
 
 import { ChevronUp, TrashIcon } from "lucide-react";
 import type { User } from "next-auth";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +17,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { LOGGED_OUT_FLAG } from "@/lib/thestudent/android";
 import { LoaderIcon } from "./icons";
 import { toast } from "./toast";
 
@@ -26,6 +27,66 @@ function emailToHue(email: string): number {
     hash = char.charCodeAt(0) + ((hash << 5) - hash);
   }
   return Math.abs(hash) % 360;
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts.at(0)?.at(0) ?? "";
+  const last = parts.length > 1 ? (parts.at(-1)?.at(0) ?? "") : "";
+  return (first + last).toUpperCase() || "?";
+}
+
+/** Profile photo, or coloured initials when there's none / it fails. */
+function StudentAvatar({ user }: { user: User }) {
+  const [failed, setFailed] = useState(false);
+  const onError = useCallback(() => setFailed(true), []);
+  const label = user.name || user.email || "";
+  const hue = emailToHue(user.email ?? label);
+
+  if (user.image && !failed) {
+    return (
+      // biome-ignore lint/a11y/noNoninteractiveElementInteractions: onError only swaps in the initials
+      // biome-ignore lint/performance/noImgElement: remote avatar from any host
+      <img
+        alt=""
+        className="size-8 shrink-0 rounded-full object-cover ring-1 ring-sidebar-border/50"
+        height={32}
+        onError={onError}
+        referrerPolicy="no-referrer"
+        src={user.image}
+        width={32}
+      />
+    );
+  }
+  return (
+    <span
+      aria-hidden
+      className="flex size-8 shrink-0 items-center justify-center rounded-full font-semibold text-[12px] text-white ring-1 ring-sidebar-border/50"
+      style={{
+        background: `linear-gradient(135deg, oklch(0.55 0.12 ${hue}), oklch(0.42 0.1 ${hue + 40}))`,
+      }}
+    >
+      {initialsOf(label)}
+    </span>
+  );
+}
+
+async function logOut() {
+  try {
+    sessionStorage.setItem(LOGGED_OUT_FLAG, "1");
+  } catch {
+    // storage unavailable
+  }
+  try {
+    await fetch("/api/auth/logout", {
+      cache: "no-store",
+      credentials: "same-origin",
+      method: "POST",
+    });
+  } catch {
+    // the login screen is shown either way
+  }
+  window.location.replace("/login");
 }
 
 export function SidebarUserNav({
@@ -53,7 +114,7 @@ export function SidebarUserNav({
       return;
     }
 
-    signOut({ redirectTo: "/login" });
+    logOut();
   }, [status]);
 
   return (
@@ -75,19 +136,22 @@ export function SidebarUserNav({
               </SidebarMenuButton>
             ) : (
               <SidebarMenuButton
-                className="h-8 px-2 rounded-lg bg-transparent text-sidebar-foreground/70 transition-colors duration-150 hover:text-sidebar-foreground data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                className="h-12 gap-2.5 rounded-lg bg-transparent px-2 text-sidebar-foreground transition-colors duration-150 hover:bg-sidebar-accent/60 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                 data-testid="user-nav-button"
               >
-                <div
-                  className="size-5 shrink-0 rounded-full ring-1 ring-sidebar-border/50"
-                  style={{
-                    background: `linear-gradient(135deg, oklch(0.35 0.08 ${emailToHue(user.email ?? "")}), oklch(0.25 0.05 ${emailToHue(user.email ?? "") + 40}))`,
-                  }}
-                />
-                <span className="truncate text-[13px]" data-testid="user-email">
-                  {user?.email}
+                <StudentAvatar user={user} />
+                <span className="flex min-w-0 flex-col text-left leading-tight">
+                  <span
+                    className="truncate font-medium text-[13px]"
+                    data-testid="user-email"
+                  >
+                    {user.name || user.email}
+                  </span>
+                  <span className="truncate text-[11.5px] text-sidebar-foreground/60">
+                    {user.studentLine || user.email}
+                  </span>
                 </span>
-                <ChevronUp className="ml-auto size-3.5 text-sidebar-foreground/50" />
+                <ChevronUp className="ml-auto size-3.5 shrink-0 text-sidebar-foreground/50" />
               </SidebarMenuButton>
             )}
           </DropdownMenuTrigger>
@@ -121,7 +185,7 @@ export function SidebarUserNav({
                 onClick={handleAuthClick}
                 type="button"
               >
-                Sign out
+                Log out
               </button>
             </DropdownMenuItem>
           </DropdownMenuContent>
