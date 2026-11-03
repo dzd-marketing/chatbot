@@ -16,9 +16,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // TheStudent app SSO: the app POSTs its one-time code here before any
-  // session exists, so it must not be bounced to the guest sign-in.
-  if (pathname === APP_AUTH_ROUTE_PATH) {
+  // TheStudent app sign-in (SSO code POST, token handshake): these run
+  // before any site session exists, so they must not be bounced to the
+  // guest sign-in.
+  if (pathname === APP_AUTH_ROUTE_PATH || pathname === "/api/app-session") {
     return NextResponse.next();
   }
 

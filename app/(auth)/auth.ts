@@ -4,7 +4,10 @@ import type { DefaultJWT } from "next-auth/jwt";
 import Credentials from "next-auth/providers/credentials";
 import { DUMMY_PASSWORD } from "@/lib/constants";
 import { createGuestUser, getUser } from "@/lib/db/queries";
-import { checkAppSession } from "@/lib/sso/session-check";
+import {
+  checkAppSession,
+  checkStudentTokenSession,
+} from "@/lib/sso/session-check";
 import { authConfig } from "./auth.config";
 
 export type UserType = "guest" | "regular";
@@ -28,6 +31,8 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT extends DefaultJWT {
+    /** "token": app handshake (/api/app-session); absent: SSO code flow. */
+    appAuth?: "token";
     /** Last time TheStudent API confirmed the app account (ms). */
     appCheckedAt?: number;
     /** TheStudent app account id; set only by /api/app-auth. Server-only. */
@@ -54,7 +59,10 @@ export const {
       // App SSO sessions are re-validated with TheStudent API; returning
       // null signs the user out (Auth.js clears the session cookie).
       if (token.appSub) {
-        const check = await checkAppSession(token.appSub, token.appCheckedAt);
+        const check =
+          token.appAuth === "token"
+            ? await checkStudentTokenSession(token.appSub, token.appCheckedAt)
+            : await checkAppSession(token.appSub, token.appCheckedAt);
         if (!check.active) {
           return null;
         }

@@ -101,6 +101,14 @@ export function parseSsoConfig(
   };
 }
 
+/** HttpOnly cookie holding the app's verified session token (handshake). */
+export const STUDENT_SESSION_COOKIE = "thestudent_session";
+
+/** Validated THESTUDENT_API_BASE. Throws SsoConfigError when invalid. */
+export function getApiBase(env: NodeJS.ProcessEnv = process.env) {
+  return readHttpsOrigin(env, "THESTUDENT_API_BASE");
+}
+
 /**
  * Just the validated ASSISTANT_WEB_ORIGIN (or null when missing/invalid), for
  * features that need the production origin but not the SSO secret.

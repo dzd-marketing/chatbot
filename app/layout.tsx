@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AndroidEmbed } from "@/components/android-embed";
+import { StudentSessionProvider } from "@/components/student-session";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { EMBED_DETECT_SCRIPT } from "@/lib/android-embed";
@@ -117,8 +118,10 @@ export default function RootLayout({
           <SessionProvider
             basePath={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/auth`}
           >
-            <TooltipProvider>{children}</TooltipProvider>
-            <AndroidEmbed />
+            <StudentSessionProvider>
+              <TooltipProvider>{children}</TooltipProvider>
+              <AndroidEmbed />
+            </StudentSessionProvider>
           </SessionProvider>
         </ThemeProvider>
       </body>

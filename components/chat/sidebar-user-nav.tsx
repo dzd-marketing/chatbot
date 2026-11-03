@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation";
 import type { User } from "next-auth";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
+import {
+  type StudentUser,
+  signOutStudent,
+  useStudentSession,
+} from "@/components/student-session";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +36,78 @@ function emailToHue(email: string): number {
   return Math.abs(hash) % 360;
 }
 
+function initialsOf(name: string | null, email: string | null) {
+  const source = (name || email || "").trim();
+  const words = source.split(/[\s@._-]+/).filter(Boolean);
+  const letters = words
+    .slice(0, 2)
+    .map((word) => Array.from(word)[0] ?? "")
+    .join("");
+  return letters.toUpperCase() || "S";
+}
+
+/** Profile photo, or a circle with initials when there is none / it fails. */
+function StudentAvatar({ student }: { student: StudentUser }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const url = student.avatar_url;
+  const handleError = useCallback(() => setFailedUrl(url), [url]);
+
+  if (url && failedUrl !== url) {
+    return (
+      // biome-ignore lint/performance/noImgElement: external avatar host (Google); next/image would proxy it
+      // biome-ignore lint/a11y/noNoninteractiveElementInteractions: onError swaps in the initials fallback
+      <img
+        alt=""
+        className="size-7 shrink-0 rounded-full object-cover ring-1 ring-sidebar-border/50"
+        height={28}
+        onError={handleError}
+        referrerPolicy="no-referrer"
+        src={url}
+        width={28}
+      />
+    );
+  }
+  return (
+    <div
+      aria-hidden="true"
+      className="flex size-7 shrink-0 items-center justify-center rounded-full font-semibold text-[11px] text-white ring-1 ring-sidebar-border/50"
+      style={{
+        background: `linear-gradient(135deg, oklch(0.45 0.1 ${emailToHue(student.email ?? student.name ?? "")}), oklch(0.32 0.07 ${emailToHue(student.email ?? student.name ?? "") + 40}))`,
+      }}
+    >
+      {initialsOf(student.name, student.email)}
+    </div>
+  );
+}
+
+function StudentLabel({ student }: { student: StudentUser }) {
+  const subtitle =
+    student.stream_or_degree || student.target_exam || student.email;
+  return (
+    <>
+      <StudentAvatar student={student} />
+      <div className="flex min-w-0 flex-1 flex-col text-left leading-tight">
+        <span
+          className="truncate font-medium text-[13px] text-sidebar-foreground"
+          data-testid="user-email"
+        >
+          {student.name || student.email || "Student"}
+        </span>
+        {subtitle ? (
+          <span className="truncate text-[11px] text-sidebar-foreground/60">
+            {subtitle}
+          </span>
+        ) : null}
+      </div>
+      {student.exp_tier ? (
+        <span className="shrink-0 rounded-full bg-sidebar-accent px-1.5 py-0.5 font-medium text-[10px] text-sidebar-foreground/80">
+          {student.exp_tier}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 export function SidebarUserNav({
   user,
   onDeleteAll,
@@ -48,6 +125,8 @@ export function SidebarUserNav({
   const embedName = useEmbedIdentity()?.name;
   // App SSO accounts show their name (website accounts keep showing email).
   const appName = data?.user?.appSession ? data.user.name : null;
+  // Student verified through the Android app's handshake (display only).
+  const { user: student } = useStudentSession();
   const handleThemeSelect = useCallback(() => {
     setTheme(resolvedTheme === "dark" ? "light" : "dark");
   }, [resolvedTheme, setTheme]);
@@ -62,21 +141,24 @@ export function SidebarUserNav({
       return;
     }
 
-    if (isGuest) {
+    if (student) {
+      // App sign-in: drop the app token cookie, then the site session.
+      signOutStudent().finally(() => signOut({ redirectTo: "/" }));
+    } else if (isGuest) {
       router.push("/login");
     } else {
       signOut({
         redirectTo: "/",
       });
     }
-  }, [isGuest, router, status]);
+  }, [isGuest, router, status, student]);
 
   return (
     <SidebarMenu>
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            {status === "loading" ? (
+            {status === "loading" && !student ? (
               <SidebarMenuButton className="h-10 justify-between rounded-lg bg-transparent text-sidebar-foreground/50 transition-colors duration-150 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
                 <div className="flex flex-row items-center gap-2">
                   <div className="size-6 animate-pulse rounded-full bg-sidebar-foreground/10" />
@@ -87,6 +169,14 @@ export function SidebarUserNav({
                 <div className="animate-spin text-sidebar-foreground/50">
                   <LoaderIcon />
                 </div>
+              </SidebarMenuButton>
+            ) : student ? (
+              <SidebarMenuButton
+                className="h-11 gap-2 rounded-lg bg-transparent px-2 text-sidebar-foreground/80 transition-colors duration-150 hover:text-sidebar-foreground data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                data-testid="user-nav-button"
+              >
+                <StudentLabel student={student} />
+                <ChevronUp className="size-3.5 shrink-0 text-sidebar-foreground/50" />
               </SidebarMenuButton>
             ) : (
               <SidebarMenuButton
@@ -136,7 +226,7 @@ export function SidebarUserNav({
                 onClick={handleAuthClick}
                 type="button"
               >
-                {isGuest ? "Login to your account" : "Sign out"}
+                {isGuest && !student ? "Login to your account" : "Sign out"}
               </button>
             </DropdownMenuItem>
           </DropdownMenuContent>
