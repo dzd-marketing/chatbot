@@ -1,9 +1,5 @@
 import { NextResponse } from "next/server";
 
-/** Temporary authenticated probe; remove after verifying Vercel egress. */
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 const DEFAULT_API_BASE = "https://app.quizontal.site";
 const DEFAULT_WEB_ORIGIN = "https://chatbot-liart-rho-81.vercel.app";
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -26,6 +22,7 @@ function httpsOrigin(value: string | undefined, fallback: string): string {
   return fallback;
 }
 
+/** Temporary authenticated probe; remove after verifying Vercel egress. */
 export async function GET() {
   const startedAt = Date.now();
   const apiBase = httpsOrigin(process.env.THESTUDENT_API_BASE, DEFAULT_API_BASE);
