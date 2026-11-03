@@ -130,7 +130,9 @@ export const {
   // their parameters (students' emails and names).
   logger: {
     error(error) {
-      console.error(`[auth] ${error.name}`);
+      // AuthError.type survives minification ("CallbackRouteError", ...).
+      const type = (error as { type?: string }).type ?? "AuthError";
+      console.error(`[auth] ${type}`);
     },
     warn(code) {
       console.warn(`[auth] ${code}`);
