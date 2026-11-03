@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
  *   THESTUDENT_API_BASE         https origin of the PHP API (optional)
  *   ASSISTANT_WEB_ORIGIN        https origin of this site (optional)
  *   THESTUDENT_WEB_CLIENT_KEY   sent as X-TheStudent-Key when set (optional)
+ *   THESTUDENT_API_USER_AGENT   User-Agent for auth.php calls (optional)
  */
 
 export const DEFAULT_THESTUDENT_API_BASE = "https://app.quizontal.site";
@@ -62,10 +63,21 @@ function tokenHeaders(token: string): Record<string, string> {
   };
 }
 
+/**
+ * The server's LiteSpeed/Imunify360 firewall answers Node's default
+ * "User-Agent: node" with 403 before PHP runs; the Android app's OkHttp
+ * agent is allowed. Override with THESTUDENT_API_USER_AGENT if that changes.
+ */
+const DEFAULT_API_USER_AGENT = "okhttp/4.12.0";
+
+/** Sent on EVERY auth.php call (web_login, me, logout). */
 function baseHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/json",
+    "Content-Type": "application/json",
     Origin: httpsOrigin("ASSISTANT_WEB_ORIGIN", DEFAULT_ASSISTANT_WEB_ORIGIN),
+    "User-Agent":
+      process.env.THESTUDENT_API_USER_AGENT?.trim() || DEFAULT_API_USER_AGENT,
     "X-TheStudent-Client": "web-assistant",
   };
   const key = process.env.THESTUDENT_WEB_CLIENT_KEY?.trim();
@@ -215,7 +227,7 @@ export async function webLogin(
     response = await fetch(endpoint("web_login"), {
       body: JSON.stringify({ client: "web", email, password }),
       cache: "no-store",
-      headers: { ...baseHeaders(), "Content-Type": "application/json" },
+      headers: baseHeaders(),
       method: "POST",
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
@@ -305,7 +317,6 @@ export async function revokeToken(token: string): Promise<void> {
       headers: {
         ...baseHeaders(),
         ...tokenHeaders(token),
-        "Content-Type": "application/json",
       },
       method: "POST",
       signal: AbortSignal.timeout(TIMEOUT_MS),
