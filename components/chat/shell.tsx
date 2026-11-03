@@ -127,7 +127,7 @@ export function ChatShell() {
             selectedVisibilityType={visibilityType}
           />
 
-          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background md:rounded-tl-[12px] md:border-t md:border-l md:border-border/40 embed:md:rounded-none embed:md:border-0">
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background md:rounded-tl-[12px] md:border-t md:border-l md:border-border/40">
             <Messages
               addToolApprovalResponse={addToolApprovalResponse}
               chatId={chatId}
@@ -153,8 +153,8 @@ export function ChatShell() {
             <div
               className={cn(
                 showWelcome
-                  ? "absolute inset-0 z-10 flex flex-col items-center overflow-y-auto overflow-x-hidden px-3 py-8 md:px-6 embed:pb-[calc(3rem+env(safe-area-inset-bottom))]"
-                  : "sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 bg-background px-2 pb-3 md:px-4 md:pb-4 embed:pb-[calc(1.5rem+env(safe-area-inset-bottom))] embed:md:pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
+                  ? "absolute inset-0 z-10 flex flex-col items-center overflow-y-auto overflow-x-hidden px-3 py-8 md:px-6"
+                  : "sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 bg-background px-2 pb-3 md:px-4 md:pb-4"
               )}
               data-testid={showWelcome ? "welcome-screen" : undefined}
             >

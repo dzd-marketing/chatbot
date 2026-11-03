@@ -36,8 +36,6 @@ import {
   type ToolGroupId,
   type ToolSettings,
 } from "@/lib/ai/tool-groups";
-import { postToApp } from "@/lib/android-bridge";
-import { isAndroidEmbed, isInApp } from "@/lib/android-embed";
 import { withStoppedReply } from "@/lib/chat/stopped";
 import type { Vote } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
@@ -86,7 +84,6 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const chatIdFromUrl = extractChatId(pathname);
   const isNewChat = !chatIdFromUrl;
   const newChatIdRef = useRef(generateUUID());
-  const announcedChatsRef = useRef(new Set<string>());
   const prevPathnameRef = useRef(pathname);
 
   if (isNewChat && prevPathnameRef.current !== pathname) {
@@ -201,23 +198,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    onFinish: ({ isAbort, messages: finishedMessages }) => {
-      // Android app: the first reply of a new conversation tells the native
-      // history drawer to refresh (once per conversation).
-      if (isInApp()) {
-        const userMessages = finishedMessages.filter(
-          (item) => item.role === "user"
-        );
-        const [firstUserMessage] = userMessages;
-        if (
-          userMessages.length === 1 &&
-          firstUserMessage &&
-          !announcedChatsRef.current.has(firstUserMessage.id)
-        ) {
-          announcedChatsRef.current.add(firstUserMessage.id);
-          postToApp("NEW_CHAT");
-        }
-      }
+    onFinish: ({ isAbort }) => {
       // The Stop button marks the reply at once; mark it again after the
       // stream's last update in case that update replaced it.
       if (isAbort) {
@@ -325,29 +306,6 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       });
     }
   }, [sendMessage, chatId]);
-
-  // Android app: `?q=` prefills the composer (never auto-sends), then is
-  // removed from the address so a reload doesn't prefill it again.
-  const hasPrefilledRef = useRef(false);
-  useEffect(() => {
-    if (hasPrefilledRef.current || !isAndroidEmbed()) {
-      return;
-    }
-    hasPrefilledRef.current = true;
-    const params = new URLSearchParams(window.location.search);
-    const question = params.get("q")?.trim();
-    if (!question) {
-      return;
-    }
-    setInput(question.slice(0, 4000));
-    params.delete("q");
-    const search = params.toString();
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`
-    );
-  }, []);
 
   useAutoResume({
     autoResume: !isNewChat && !!chatData,

@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { guestRegex, isDevelopmentEnvironment } from "./lib/constants";
-import { APP_AUTH_ROUTE_PATH } from "./lib/sso/config";
 
 const PUBLIC_PATHS = new Set(["/terms", "/privacy"]);
 
@@ -13,13 +12,6 @@ export async function proxy(request: NextRequest) {
   }
 
   if (pathname.startsWith("/api/auth")) {
-    return NextResponse.next();
-  }
-
-  // TheStudent app sign-in (SSO code POST, token handshake): these run
-  // before any site session exists, so they must not be bounced to the
-  // guest sign-in.
-  if (pathname === APP_AUTH_ROUTE_PATH || pathname === "/api/app-session") {
     return NextResponse.next();
   }
 
@@ -37,10 +29,7 @@ export async function proxy(request: NextRequest) {
   const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
   if (!token) {
-    // Keep the query string: the Android app's first launch carries
-    // ?app=android&theme=…&q=… and must survive the guest sign-in hop.
-    const { pathname: path, search } = new URL(request.url);
-    const redirectUrl = encodeURIComponent(`${path}${search}`);
+    const redirectUrl = encodeURIComponent(new URL(request.url).pathname);
 
     return NextResponse.redirect(
       new URL(`${base}/api/auth/guest?redirectUrl=${redirectUrl}`, request.url)

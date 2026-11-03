@@ -12,11 +12,6 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const user = pgTable("User", {
-  /**
-   * TheStudent app account id (`sub` from the SSO exchange). The ONLY key
-   * used to find app users; email is never used to link accounts.
-   */
-  appSub: varchar("appSub", { length: 20 }).unique("User_appSub_unique"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   email: varchar("email", { length: 64 }).notNull(),
   emailVerified: boolean("emailVerified").notNull().default(false),

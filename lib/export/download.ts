@@ -1,13 +1,8 @@
 /** Browser download helpers for exported documents. */
 
-import { EMBED_DOWNLOAD_MESSAGE, isInApp } from "@/lib/android-embed";
 import { fileNameFor } from "./file-name";
 
 export function downloadBlob(blob: Blob, fileName: string) {
-  // The Android app's WebView blocks downloads.
-  if (isInApp()) {
-    throw new Error(EMBED_DOWNLOAD_MESSAGE);
-  }
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -27,9 +22,6 @@ export async function downloadWord(title: string, markdown: string) {
 }
 
 export async function printAsPdf(title: string, markdown: string) {
-  if (isInApp()) {
-    throw new Error(EMBED_DOWNLOAD_MESSAGE);
-  }
   const { printMarkdown } = await import("./print-pdf");
   await printMarkdown(title, markdown);
 }

@@ -5,10 +5,6 @@
 @source "../node_modules/streamdown/dist/index.js";
 
 @custom-variant dark (&:is(.dark, .dark *));
-/* Android app WebView (data-embed set pre-paint by lib/android-embed.ts). */
-@custom-variant embed (&:is([data-embed="android"] *));
-/* Inside the Android app, with or without the embed layout. */
-@custom-variant in-app (&:is([data-thestudent-app="android"] *));
 /* The UI components use data-open:/data-closed:, but Radix marks state with
    data-state="open"/"closed"; without these, their animations never run. */
 @custom-variant data-open {
@@ -913,13 +909,4 @@ textarea:focus-visible {
   .dzd-welcome-glow-layer {
     animation: none;
   }
-}
-
-/*
- * Android embed mode: the app draws its own top bar, so the site's sidebar
- * (desktop rail, its spacer and the mobile sheet) never shows.
- */
-[data-embed="android"] [data-slot="sidebar"],
-[data-embed="android"] [data-slot="sidebar-gap"] {
-  display: none !important;
 }

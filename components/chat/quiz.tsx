@@ -183,7 +183,7 @@ function PureQuiz({
         </div>
         <button
           aria-label="Download quiz as Word"
-          className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground in-app:hidden"
+          className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           onClick={download}
           title="Download quiz with answers (Word)"
           type="button"

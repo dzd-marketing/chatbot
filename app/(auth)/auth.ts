@@ -4,10 +4,6 @@ import type { DefaultJWT } from "next-auth/jwt";
 import Credentials from "next-auth/providers/credentials";
 import { DUMMY_PASSWORD } from "@/lib/constants";
 import { createGuestUser, getUser } from "@/lib/db/queries";
-import {
-  checkAppSession,
-  checkStudentTokenSession,
-} from "@/lib/sso/session-check";
 import { authConfig } from "./auth.config";
 
 export type UserType = "guest" | "regular";
@@ -17,8 +13,6 @@ declare module "next-auth" {
     user: {
       id: string;
       type: UserType;
-      /** Signed in through the TheStudent app (SSO), not a website login. */
-      appSession?: boolean;
     } & DefaultSession["user"];
   }
 
@@ -31,12 +25,6 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT extends DefaultJWT {
-    /** "token": app handshake (/api/app-session); absent: SSO code flow. */
-    appAuth?: "token";
-    /** Last time TheStudent API confirmed the app account (ms). */
-    appCheckedAt?: number;
-    /** TheStudent app account id; set only by /api/app-auth. Server-only. */
-    appSub?: string;
     id: string;
     type: UserType;
   }
@@ -50,23 +38,10 @@ export const {
 } = NextAuth({
   ...authConfig,
   callbacks: {
-    async jwt({ token, user }) {
+    jwt({ token, user }) {
       if (user) {
         token.id = user.id as string;
         token.type = user.type;
-      }
-
-      // App SSO sessions are re-validated with TheStudent API; returning
-      // null signs the user out (Auth.js clears the session cookie).
-      if (token.appSub) {
-        const check =
-          token.appAuth === "token"
-            ? await checkStudentTokenSession(token.appSub, token.appCheckedAt)
-            : await checkAppSession(token.appSub, token.appCheckedAt);
-        if (!check.active) {
-          return null;
-        }
-        token.appCheckedAt = check.checkedAt;
       }
 
       return token;
@@ -75,7 +50,6 @@ export const {
       if (session.user) {
         session.user.id = token.id;
         session.user.type = token.type;
-        session.user.appSession = Boolean(token.appSub);
       }
 
       return session;

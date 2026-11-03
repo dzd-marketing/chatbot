@@ -185,7 +185,7 @@ function DocumentDownloads({
     "inline-flex h-8 items-center gap-1.5 rounded-lg border border-border/50 bg-card px-3 font-medium text-[13px] text-foreground transition-colors hover:bg-muted disabled:opacity-60";
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2 in-app:hidden">
+    <div className="mt-2 flex flex-wrap items-center gap-2">
       <span className="mr-0.5 text-[12px] text-muted-foreground">Download</span>
       <button
         className={buttonClass}

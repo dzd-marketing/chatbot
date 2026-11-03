@@ -25,7 +25,3 @@ yarn-error.log*
 /playwright/*
 next-env.d.ts
 tsconfig.tsbuildinfo
-
-# Any env file with real values (only the empty template is committed)
-.env.*
-!.env.example
