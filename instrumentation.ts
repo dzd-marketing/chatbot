@@ -14,7 +14,7 @@ export function register() {
       parseSsoConfig();
     } catch (error) {
       console.error(
-        `[app-auth] App sign-in is disabled: ${error instanceof Error ? error.message : "invalid SSO config"}`
+        `[app-auth] One-time-code app sign-in (/api/app-auth) is disabled; the token handshake is unaffected: ${error instanceof Error ? error.message : "invalid SSO config"}`
       );
     }
   }

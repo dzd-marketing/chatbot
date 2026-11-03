@@ -1,12 +1,13 @@
 import { withBotId } from "botid/next/config";
 import type { NextConfig } from "next";
-import { parseSsoConfig } from "./lib/sso/config";
+import { checkSsoEnvForBuild } from "./lib/sso/config";
 
 // Fail fast: a Vercel production build stops here (and the live deployment
-// stays untouched) if an app SSO variable is missing or malformed. The error
+// stays untouched) if an app SSO variable is set but malformed. Missing URLs
+// fall back to their defaults; a missing SSO secret only warns. The error
 // names the variable, never its value.
 if (process.env.VERCEL_ENV === "production") {
-  parseSsoConfig();
+  checkSsoEnvForBuild();
 }
 
 const basePath = process.env.IS_DEMO === "1" ? "/demo" : "";

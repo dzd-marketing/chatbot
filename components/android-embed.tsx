@@ -5,7 +5,11 @@ import { useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { useEmbedIdentity, useIsEmbedded } from "@/hooks/use-android-embed";
+import {
+  useEmbedIdentity,
+  useIsEmbedded,
+  useIsInApp,
+} from "@/hooks/use-android-embed";
 import {
   BRIDGE_CHAT_ID,
   formatRelativeTime,
@@ -153,10 +157,13 @@ function handleDocumentClick(event: MouseEvent) {
 
 /**
  * Mounted once in the root layout. Renders nothing; in a normal browser it
- * does nothing at all.
+ * does nothing at all. Bridge, links and session messages work whenever the
+ * page runs in the app (embed layout or the full site with header and
+ * sidebar); the app's theme hint applies to the embed layout only.
  */
 export function AndroidEmbed() {
   const embedded = useIsEmbedded();
+  const inApp = useIsInApp();
   const identity = useEmbedIdentity();
   const { setTheme } = useTheme();
   const router = useRouter();
@@ -165,7 +172,7 @@ export function AndroidEmbed() {
   // string, same origin or the app's native channel) or a
   // `thestudent:bridge` CustomEvent (JSON string in `detail`).
   useEffect(() => {
-    if (!embedded) {
+    if (!inApp) {
       return;
     }
     let inFlight = false;
@@ -222,11 +229,11 @@ export function AndroidEmbed() {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("thestudent:bridge", onBridgeEvent);
     };
-  }, [embedded, router]);
+  }, [inApp, router]);
 
   // Links, downloads and popups.
   useEffect(() => {
-    if (!embedded) {
+    if (!inApp) {
       return;
     }
     document.addEventListener("click", handleDocumentClick, true);
@@ -243,7 +250,7 @@ export function AndroidEmbed() {
       document.removeEventListener("click", handleDocumentClick, true);
       window.open = originalOpen;
     };
-  }, [embedded]);
+  }, [inApp]);
 
   // Theme from the app's identity payload (the URL theme is applied pre-paint).
   const identityTheme = identity?.theme;
@@ -262,7 +269,7 @@ export function AndroidEmbed() {
   const readyPostedRef = useRef(false);
 
   useEffect(() => {
-    if (!embedded || status === "loading") {
+    if (!inApp || status === "loading") {
       return;
     }
     if (isAppSession) {
@@ -283,12 +290,12 @@ export function AndroidEmbed() {
         postToApp("SESSION_EXPIRED");
       }
     }
-  }, [embedded, status, isAppSession]);
+  }, [inApp, status, isAppSession]);
 
   // Re-check an app session periodically while the chat is visible, so an
   // account signed out in the app is noticed (the server asks TheStudent API).
   useEffect(() => {
-    if (!(embedded && isAppSession)) {
+    if (!(inApp && isAppSession)) {
       return;
     }
     const timer = window.setInterval(() => {
@@ -297,7 +304,7 @@ export function AndroidEmbed() {
       }
     }, SESSION_RECHECK_MS);
     return () => window.clearInterval(timer);
-  }, [embedded, isAppSession, update]);
+  }, [inApp, isAppSession, update]);
 
   return null;
 }

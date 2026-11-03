@@ -7,10 +7,29 @@
  * can also import it and fail a production build when the config is wrong.
  *
  *   ASSISTANT_SSO_SECRET     64 hex chars, byte-identical to the PHP server's
+ *                            (no default: without it the one-time-code
+ *                            sign-in is off; the token handshake still works)
  *   THESTUDENT_API_BASE      https origin of the PHP API, no trailing slash
+ *                            (default: DEFAULT_THESTUDENT_API_BASE)
  *   ASSISTANT_WEB_ORIGIN     https origin of this site, no trailing slash
+ *                            (default: DEFAULT_ASSISTANT_WEB_ORIGIN)
  *   ASSISTANT_EXCHANGE_PATH  path the app POSTs the one-time code to
+ *                            (default: /api/app-auth)
+ *
+ * A variable that IS set but malformed (http://, trailing slash, a path) is
+ * an error, never silently replaced by the default.
  */
+
+/** Used when THESTUDENT_API_BASE is not set (e.g. not configured on Vercel). */
+export const DEFAULT_THESTUDENT_API_BASE = "https://app.quizontal.site";
+/** Used when ASSISTANT_WEB_ORIGIN is not set. Must match the app's pin. */
+export const DEFAULT_ASSISTANT_WEB_ORIGIN =
+  "https://chatbot-liart-rho-81.vercel.app";
+
+const ORIGIN_DEFAULTS: Record<string, string> = {
+  ASSISTANT_WEB_ORIGIN: DEFAULT_ASSISTANT_WEB_ORIGIN,
+  THESTUDENT_API_BASE: DEFAULT_THESTUDENT_API_BASE,
+};
 
 /** Auth.js session cookie on https (ASSISTANT_WEB_ORIGIN must be https). */
 export const SECURE_SESSION_COOKIE = "__Secure-authjs.session-token";
@@ -39,7 +58,7 @@ const HEX_SECRET = /^[0-9a-f]{64}$/i;
 
 /** Accepts only a bare `https://host[:port]` origin (no path, slash, query). */
 function readHttpsOrigin(env: NodeJS.ProcessEnv, name: string): string {
-  const value = env[name];
+  const value = env[name]?.trim() || ORIGIN_DEFAULTS[name];
   if (!value) {
     throw new SsoConfigError(`${name} is missing.`);
   }
@@ -77,7 +96,8 @@ export function parseSsoConfig(
   const apiBase = readHttpsOrigin(env, "THESTUDENT_API_BASE");
   const webOrigin = readHttpsOrigin(env, "ASSISTANT_WEB_ORIGIN");
 
-  const exchangePath = env.ASSISTANT_EXCHANGE_PATH;
+  const exchangePath =
+    env.ASSISTANT_EXCHANGE_PATH?.trim() || APP_AUTH_ROUTE_PATH;
   if (!exchangePath) {
     throw new SsoConfigError("ASSISTANT_EXCHANGE_PATH is missing.");
   }
@@ -119,6 +139,23 @@ export function getWebOrigin(env: NodeJS.ProcessEnv = process.env) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Production build check (next.config.ts): fails the build for malformed
+ * values; a missing ASSISTANT_SSO_SECRET only warns (the one-time-code
+ * sign-in stays off, everything else works).
+ */
+export function checkSsoEnvForBuild(env: NodeJS.ProcessEnv = process.env) {
+  readHttpsOrigin(env, "THESTUDENT_API_BASE");
+  readHttpsOrigin(env, "ASSISTANT_WEB_ORIGIN");
+  if (!env.ASSISTANT_SSO_SECRET) {
+    console.warn(
+      "[app-auth] ASSISTANT_SSO_SECRET is not set: the one-time-code app sign-in (/api/app-auth) is off. The token handshake still works."
+    );
+    return;
+  }
+  parseSsoConfig(env);
 }
 
 let cached: SsoConfig | null = null;

@@ -1,12 +1,12 @@
 import { motion } from "framer-motion";
 import { useSession } from "next-auth/react";
-import { useEmbedIdentity, useIsEmbedded } from "@/hooks/use-android-embed";
+import { useEmbedIdentity, useIsInApp } from "@/hooks/use-android-embed";
 import { WelcomeLoader } from "./welcome-loader";
 
 export const Greeting = () => {
   // Inside the Android app, greet the signed-in student by first name: the
   // app SSO session's name first, else the app's display hint.
-  const embedded = useIsEmbedded();
+  const embedded = useIsInApp();
   const hintName = useEmbedIdentity()?.name;
   const { data } = useSession();
   const sessionName = data?.user?.appSession ? data.user.name : null;

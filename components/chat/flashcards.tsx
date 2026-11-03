@@ -179,7 +179,7 @@ function PureFlashcards({
         </button>
         <button
           aria-label="Download flashcards as Word"
-          className={`${iconButton} embed:hidden`}
+          className={`${iconButton} in-app:hidden`}
           onClick={download}
           title="Download (Word)"
           type="button"

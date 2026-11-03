@@ -10,8 +10,6 @@
  * CustomEvent. Only REQUEST_HISTORY and OPEN_CHAT are acted on.
  */
 
-import { isAndroidEmbed } from "./android-embed";
-
 export const BRIDGE_MESSAGE_TYPES = [
   "SESSION_READY",
   "SESSION_EXPIRED",
@@ -36,7 +34,8 @@ declare global {
 }
 
 function getBridge(): TheStudentBridge | null {
-  if (typeof window === "undefined" || !isAndroidEmbed()) {
+  // Only the app injects the bridge, so this is a no-op in a normal browser.
+  if (typeof window === "undefined") {
     return null;
   }
   // Main frame only, matching where the app injects the bridge.

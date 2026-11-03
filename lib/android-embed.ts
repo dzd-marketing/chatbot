@@ -8,10 +8,14 @@
  * downloads). In a normal browser none of this runs.
  *
  * Detection happens once, before first paint, in EMBED_DETECT_SCRIPT (inlined
- * in the root layout's <head>). It sets `data-embed="android"` on <html>,
- * which the `embed:` Tailwind variant and the helpers below read. The flag is
- * kept in sessionStorage so it survives in-app navigation and reloads, where
- * the query string is gone.
+ * in the root layout's <head>):
+ * - `data-embed="android"` (the `embed:` variant, isAndroidEmbed): ONLY when
+ *   opened with ?app=android. Hides the site header and sidebar. Kept in
+ *   sessionStorage so it survives in-app navigation and reloads.
+ * - `data-thestudent-app="android"` (the `in-app:` variant, isInApp): embed
+ *   mode OR the app's user agent (" TheStudentAndroid/"). The full site
+ *   layout stays; only WebView-safe behaviour (bridge, links, downloads)
+ *   turns on.
  */
 
 export const EMBED_SESSION_KEY = "thestudent-embed";
@@ -32,8 +36,11 @@ export const EMBED_DETECT_SCRIPT = `(function () {
     var params = new URLSearchParams(window.location.search);
     var embedded =
       params.get("app") === "${EMBED_VALUE}" ||
-      / TheStudentAndroid\\//.test(navigator.userAgent || "") ||
       window.sessionStorage.getItem("${EMBED_SESSION_KEY}") === "${EMBED_VALUE}";
+    // Inside the app (embed layout or not): the UA carries the app marker.
+    if (embedded || / TheStudentAndroid\\//.test(navigator.userAgent || "")) {
+      root.setAttribute("data-thestudent-app", "${EMBED_VALUE}");
+    }
     if (!embedded) return;
     window.sessionStorage.setItem("${EMBED_SESSION_KEY}", "${EMBED_VALUE}");
     root.setAttribute("data-embed", "${EMBED_VALUE}");
@@ -51,7 +58,15 @@ export const EMBED_DETECT_SCRIPT = `(function () {
   } catch (error) {}
 })();`;
 
-/** True only inside the Android app's WebView (client-side). */
+/** Inside the Android app's WebView, with or without the embed layout. */
+export function isInApp(): boolean {
+  return (
+    typeof document !== "undefined" &&
+    document.documentElement.dataset.thestudentApp === EMBED_VALUE
+  );
+}
+
+/** The embed layout (?app=android): site header and sidebar hidden. */
 export function isAndroidEmbed(): boolean {
   return (
     typeof document !== "undefined" &&

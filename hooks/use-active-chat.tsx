@@ -37,7 +37,7 @@ import {
   type ToolSettings,
 } from "@/lib/ai/tool-groups";
 import { postToApp } from "@/lib/android-bridge";
-import { isAndroidEmbed } from "@/lib/android-embed";
+import { isAndroidEmbed, isInApp } from "@/lib/android-embed";
 import { withStoppedReply } from "@/lib/chat/stopped";
 import type { Vote } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
@@ -204,7 +204,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     onFinish: ({ isAbort, messages: finishedMessages }) => {
       // Android app: the first reply of a new conversation tells the native
       // history drawer to refresh (once per conversation).
-      if (isAndroidEmbed()) {
+      if (isInApp()) {
         const userMessages = finishedMessages.filter(
           (item) => item.role === "user"
         );

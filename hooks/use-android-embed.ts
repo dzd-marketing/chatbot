@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import {
   getIdentity,
   isAndroidEmbed,
+  isInApp,
   type StudentIdentity,
   subscribeIdentity,
 } from "@/lib/android-embed";
@@ -17,6 +18,11 @@ const serverNull = () => null;
 /** `true` inside the Android app's WebView. Always `false` on the server. */
 export function useIsEmbedded(): boolean {
   return useSyncExternalStore(noopSubscribe, isAndroidEmbed, serverFalse);
+}
+
+/** `true` inside the Android app (any layout). Always `false` on the server. */
+export function useIsInApp(): boolean {
+  return useSyncExternalStore(noopSubscribe, isInApp, serverFalse);
 }
 
 /** The student the Android app says is signed in (display only). */
