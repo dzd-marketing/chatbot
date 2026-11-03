@@ -126,6 +126,16 @@ export const {
       return session;
     },
   },
+  // Error names only: Auth.js' default logger prints failed queries with
+  // their parameters (students' emails and names).
+  logger: {
+    error(error) {
+      console.error(`[auth] ${error.name}`);
+    },
+    warn(code) {
+      console.warn(`[auth] ${code}`);
+    },
+  },
   providers: [
     // Both login flows end here with a TheStudent bearer token, which is
     // trusted only after auth.php confirms it (action=me, or the result of
