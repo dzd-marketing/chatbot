@@ -44,9 +44,22 @@ function httpsOrigin(name: string, fallback: string): string {
   return fallback;
 }
 
-function endpoint(action: string): string {
+function endpoint(action: string, token?: string): string {
   const base = httpsOrigin("THESTUDENT_API_BASE", DEFAULT_THESTUDENT_API_BASE);
-  return `${base}/api/auth.php?action=${action}`;
+  const url = `${base}/api/auth.php?action=${action}`;
+  return token ? `${url}&token=${encodeURIComponent(token)}` : url;
+}
+
+/**
+ * The server's Apache (DirectAdmin, PHP-FPM) strips the Authorization
+ * header, so auth.php (v3.6.3+) also reads X-TheStudent-Token and &token=.
+ * Every token call sends all three. Request URLs are never logged here.
+ */
+function tokenHeaders(token: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${token}`,
+    "X-TheStudent-Token": token,
+  };
 }
 
 function baseHeaders(): Record<string, string> {
@@ -249,9 +262,9 @@ export async function verifyToken(token: string): Promise<VerifyResult> {
 
   let response: Response;
   try {
-    response = await fetch(endpoint("me"), {
+    response = await fetch(endpoint("me", token), {
       cache: "no-store",
-      headers: { ...baseHeaders(), Authorization: `Bearer ${token}` },
+      headers: { ...baseHeaders(), ...tokenHeaders(token) },
       method: "GET",
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
@@ -261,6 +274,7 @@ export async function verifyToken(token: string): Promise<VerifyResult> {
   }
 
   if (response.status === 401 || response.status === 403) {
+    console.warn(`[thestudent] me rejected the token (${response.status})`);
     forgetToken(token);
     return { definitive: true, ok: false };
   }
@@ -285,12 +299,12 @@ export async function revokeToken(token: string): Promise<void> {
     return;
   }
   try {
-    const response = await fetch(endpoint("logout"), {
+    const response = await fetch(endpoint("logout", token), {
       body: "{}",
       cache: "no-store",
       headers: {
         ...baseHeaders(),
-        Authorization: `Bearer ${token}`,
+        ...tokenHeaders(token),
         "Content-Type": "application/json",
       },
       method: "POST",
