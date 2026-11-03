@@ -111,8 +111,13 @@ export const {
         token.tsCheckedAt = Date.now();
         return token;
       }
-      // Revoked/expired token ends the session; a network blip does not.
-      return result.definitive ? null : token;
+      // A PHP auth error ends the session. A WAF/network failure does not;
+      // record the attempt so a blocked host is retried at most every 10 min.
+      if (result.definitive) {
+        return null;
+      }
+      token.tsCheckedAt = Date.now();
+      return token;
     },
     session({ session, token }) {
       if (session.user) {

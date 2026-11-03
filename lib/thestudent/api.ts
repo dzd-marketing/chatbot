@@ -64,11 +64,10 @@ function tokenHeaders(token: string): Record<string, string> {
 }
 
 /**
- * The server's LiteSpeed/Imunify360 firewall answers Node's default
- * "User-Agent: node" with 403 before PHP runs; the Android app's OkHttp
- * agent is allowed. Override with THESTUDENT_API_USER_AGENT if that changes.
+ * Identify server-to-server requests truthfully. The firewall must allow the
+ * Vercel egress IP; pretending this is Android/OkHttp cannot bypass an IP rule.
  */
-const DEFAULT_API_USER_AGENT = "okhttp/4.12.0";
+const DEFAULT_API_USER_AGENT = "TheStudentWeb/1.0";
 
 /** Sent on EVERY auth.php call (web_login, me, logout). */
 function baseHeaders(): Record<string, string> {
@@ -239,9 +238,12 @@ export async function webLogin(
   const data = await readJson(response);
   if (!response.ok || data.status !== "success") {
     console.warn(`[thestudent] web_login rejected (${response.status})`);
+    const firewallBlock = response.status === 403 && data.status !== "error";
     const message =
       str(data.message, 200) ??
-      (response.status >= 500 ? UNREACHABLE : "Could not log you in.");
+      (response.status >= 500 || firewallBlock
+        ? UNREACHABLE
+        : "Could not log you in.");
     return { message, ok: false };
   }
 
@@ -260,7 +262,7 @@ export async function webLogin(
 
 export type VerifyResult =
   | ({ ok: true } & Verified)
-  /** definitive: the token is invalid/revoked (401/403). */
+  /** Definitive: auth.php returned 401 or a JSON auth error (403). */
   | { ok: false; definitive: boolean };
 
 export async function verifyToken(token: string): Promise<VerifyResult> {
@@ -285,10 +287,24 @@ export async function verifyToken(token: string): Promise<VerifyResult> {
     return { definitive: false, ok: false };
   }
 
-  if (response.status === 401 || response.status === 403) {
-    console.warn(`[thestudent] me rejected the token (${response.status})`);
+  if (response.status === 401) {
+    console.warn("[thestudent] me rejected the token (401)");
     forgetToken(token);
     return { definitive: true, ok: false };
+  }
+  if (response.status === 403) {
+    const contentType =
+      response.headers.get("content-type")?.toLowerCase() ?? "";
+    const data = await readJson(response);
+    // The host's firewall returns an HTML 403 before PHP executes. Only
+    // treat a JSON auth.php error as a definitive token rejection.
+    if (contentType.includes("application/json") && data.status === "error") {
+      console.warn("[thestudent] me rejected the token (403)");
+      forgetToken(token);
+      return { definitive: true, ok: false };
+    }
+    console.warn("[thestudent] me blocked before auth.php (403)");
+    return { definitive: false, ok: false };
   }
   const data = await readJson(response);
   const profile =
