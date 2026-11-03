@@ -36,6 +36,7 @@ import {
   type ToolGroupId,
   type ToolSettings,
 } from "@/lib/ai/tool-groups";
+import { postToApp } from "@/lib/android-bridge";
 import { isAndroidEmbed } from "@/lib/android-embed";
 import { withStoppedReply } from "@/lib/chat/stopped";
 import type { Vote } from "@/lib/db/schema";
@@ -85,6 +86,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const chatIdFromUrl = extractChatId(pathname);
   const isNewChat = !chatIdFromUrl;
   const newChatIdRef = useRef(generateUUID());
+  const announcedChatsRef = useRef(new Set<string>());
   const prevPathnameRef = useRef(pathname);
 
   if (isNewChat && prevPathnameRef.current !== pathname) {
@@ -199,7 +201,23 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    onFinish: ({ isAbort }) => {
+    onFinish: ({ isAbort, messages: finishedMessages }) => {
+      // Android app: the first reply of a new conversation tells the native
+      // history drawer to refresh (once per conversation).
+      if (isAndroidEmbed()) {
+        const userMessages = finishedMessages.filter(
+          (item) => item.role === "user"
+        );
+        const [firstUserMessage] = userMessages;
+        if (
+          userMessages.length === 1 &&
+          firstUserMessage &&
+          !announcedChatsRef.current.has(firstUserMessage.id)
+        ) {
+          announcedChatsRef.current.add(firstUserMessage.id);
+          postToApp("NEW_CHAT");
+        }
+      }
       // The Stop button marks the reply at once; mark it again after the
       // stream's last update in case that update replaced it.
       if (isAbort) {

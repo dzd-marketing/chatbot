@@ -11,6 +11,7 @@ import {
   inArray,
   lt,
   type SQL,
+  sql,
 } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -96,6 +97,35 @@ export async function upsertAppUser({
       throw new Error("Upsert returned no row");
     }
     return row;
+  } catch (error) {
+    throw new ChatbotError("bad_request:database", { cause: error });
+  }
+}
+
+/**
+ * The user's most recent chats by last activity (newest message, else the
+ * chat's creation time), for the Android app's native history drawer.
+ */
+export async function getRecentChatsForApp({
+  limit,
+  userId,
+}: {
+  limit: number;
+  userId: string;
+}) {
+  const updatedAt =
+    sql<Date>`coalesce(max(${message.createdAt}), ${chat.createdAt})`.mapWith(
+      chat.createdAt
+    );
+  try {
+    return await db
+      .select({ id: chat.id, title: chat.title, updatedAt })
+      .from(chat)
+      .leftJoin(message, eq(message.chatId, chat.id))
+      .where(eq(chat.userId, userId))
+      .groupBy(chat.id)
+      .orderBy(desc(updatedAt))
+      .limit(limit);
   } catch (error) {
     throw new ChatbotError("bad_request:database", { cause: error });
   }

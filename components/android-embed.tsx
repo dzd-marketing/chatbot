@@ -1,11 +1,17 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useEmbedIdentity, useIsEmbedded } from "@/hooks/use-android-embed";
-import { postToApp } from "@/lib/android-bridge";
+import {
+  BRIDGE_CHAT_ID,
+  formatRelativeTime,
+  parseInboundMessage,
+  postToApp,
+} from "@/lib/android-bridge";
 import {
   EMBED_APP_SESSION_KEY,
   EMBED_DOWNLOAD_MESSAGE,
@@ -14,6 +20,41 @@ import {
 } from "@/lib/android-embed";
 
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const MAX_HISTORY_CHATS = 50;
+
+type HistoryResponse = {
+  chats?: { id: string; title: string; updatedAt: string }[];
+  origin?: string | null;
+};
+
+/**
+ * Reads the signed-in user's chats from the server (the HttpOnly session
+ * cookie decides whose) and hands them to the app, but only when the page
+ * runs on the configured production origin.
+ */
+async function sendHistoryToApp() {
+  const response = await fetch(`${BASE_PATH}/api/app-history`, {
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    return;
+  }
+  const data = (await response.json()) as HistoryResponse;
+  if (!data.origin || data.origin !== window.location.origin) {
+    return;
+  }
+  const chats = (data.chats ?? [])
+    .filter((chat) => BRIDGE_CHAT_ID.test(chat.id))
+    .slice(0, MAX_HISTORY_CHATS)
+    .map((chat) => ({
+      id: chat.id,
+      title: chat.title,
+      updatedAt: formatRelativeTime(chat.updatedAt),
+    }));
+  postToApp("CHAT_HISTORY", { chats });
+}
+
 /** How often an app session is re-checked while the chat is open. */
 const SESSION_RECHECK_MS = 5 * 60 * 1000;
 
@@ -118,6 +159,70 @@ export function AndroidEmbed() {
   const embedded = useIsEmbedded();
   const identity = useEmbedIdentity();
   const { setTheme } = useTheme();
+  const router = useRouter();
+
+  // App -> web: REQUEST_HISTORY and OPEN_CHAT, from window.postMessage (JSON
+  // string, same origin or the app's native channel) or a
+  // `thestudent:bridge` CustomEvent (JSON string in `detail`).
+  useEffect(() => {
+    if (!embedded) {
+      return;
+    }
+    let inFlight = false;
+    let again = false;
+    const requestHistory = () => {
+      if (inFlight) {
+        // Answer again after the current request, with fresher data.
+        again = true;
+        return;
+      }
+      inFlight = true;
+      again = false;
+      sendHistoryToApp()
+        .catch(() => {
+          // Offline or signed out: the app keeps its current list.
+        })
+        .finally(() => {
+          inFlight = false;
+          if (again) {
+            requestHistory();
+          }
+        });
+    };
+    const openChat = (chatId: string) => {
+      const path = `/chat/${chatId}`;
+      if (window.location.pathname !== `${BASE_PATH}${path}`) {
+        // Client-side navigation: loads the conversation in place.
+        router.push(path);
+      }
+    };
+    const handle = (raw: unknown) => {
+      const message = parseInboundMessage(raw);
+      if (message?.type === "REQUEST_HISTORY") {
+        requestHistory();
+      } else if (message?.type === "OPEN_CHAT") {
+        openChat(message.chatId);
+      }
+    };
+    const onMessage = (event: MessageEvent) => {
+      // Same-origin page messages, or "" for the app's native postWebMessage.
+      if (event.origin !== window.location.origin && event.origin !== "") {
+        return;
+      }
+      handle(event.data);
+    };
+    const onBridgeEvent = (event: Event) => {
+      if (event instanceof CustomEvent) {
+        handle(event.detail);
+      }
+    };
+    window.addEventListener("message", onMessage);
+    window.addEventListener("thestudent:bridge", onBridgeEvent);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      window.removeEventListener("thestudent:bridge", onBridgeEvent);
+    };
+  }, [embedded, router]);
 
   // Links, downloads and popups.
   useEffect(() => {

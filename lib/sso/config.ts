@@ -101,6 +101,18 @@ export function parseSsoConfig(
   };
 }
 
+/**
+ * Just the validated ASSISTANT_WEB_ORIGIN (or null when missing/invalid), for
+ * features that need the production origin but not the SSO secret.
+ */
+export function getWebOrigin(env: NodeJS.ProcessEnv = process.env) {
+  try {
+    return readHttpsOrigin(env, "ASSISTANT_WEB_ORIGIN");
+  } catch {
+    return null;
+  }
+}
+
 let cached: SsoConfig | null = null;
 
 /** Validated config, cached after the first success. Throws when invalid. */

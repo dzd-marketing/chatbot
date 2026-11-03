@@ -23,6 +23,8 @@ const EMBED_VALUE = "android";
  * Runs in <head> before React and next-themes. It must stay dependency-free
  * and ES5-safe. A valid `theme` param is written to next-themes' storage key
  * ("theme") and applied straight to <html>, so there is no light/dark flash.
+ * Without one, the app's default (dark) applies unless the WebView already
+ * stored an explicit light/dark choice.
  */
 export const EMBED_DETECT_SCRIPT = `(function () {
   try {
@@ -36,6 +38,10 @@ export const EMBED_DETECT_SCRIPT = `(function () {
     window.sessionStorage.setItem("${EMBED_SESSION_KEY}", "${EMBED_VALUE}");
     root.setAttribute("data-embed", "${EMBED_VALUE}");
     var theme = params.get("theme");
+    if (theme !== "dark" && theme !== "light") {
+      var stored = window.localStorage.getItem("theme");
+      theme = stored === "dark" || stored === "light" ? stored : "dark";
+    }
     if (theme === "dark" || theme === "light") {
       window.localStorage.setItem("theme", theme);
       root.classList.remove("light", "dark");
