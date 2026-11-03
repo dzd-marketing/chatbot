@@ -15,7 +15,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Legal pages are public: no guest session needed to read them.
+  // Legal pages are public: no session needed to read them.
   if (PUBLIC_PATHS.has(pathname)) {
     return NextResponse.next();
   }
@@ -28,18 +28,25 @@ export async function proxy(request: NextRequest) {
 
   const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
-  if (!token) {
-    const redirectUrl = encodeURIComponent(new URL(request.url).pathname);
-
-    return NextResponse.redirect(
-      new URL(`${base}/api/auth/guest?redirectUrl=${redirectUrl}`, request.url)
-    );
+  // Sign-up is gone: the old page sends people to the login screen.
+  if (pathname === "/register") {
+    return NextResponse.redirect(new URL(`${base}/login`, request.url));
   }
 
-  const isGuest = guestRegex.test(token?.email ?? "");
+  // Login is required. Sessions from the old guest mode no longer count.
+  const signedIn = Boolean(token) && !guestRegex.test(token?.email ?? "");
 
-  if (token && !isGuest && ["/login", "/register"].includes(pathname)) {
-    return NextResponse.redirect(new URL(`${base}/`, request.url));
+  if (pathname === "/login") {
+    return signedIn
+      ? NextResponse.redirect(new URL(`${base}/`, request.url))
+      : NextResponse.next();
+  }
+
+  if (!signedIn) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+    return NextResponse.redirect(new URL(`${base}/login`, request.url));
   }
 
   return NextResponse.next();

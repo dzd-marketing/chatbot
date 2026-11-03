@@ -1,7 +1,5 @@
-import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
 import { BrandLogo } from "@/components/chat/icons";
-import { Preview } from "@/components/chat/preview";
 
 export default function AuthLayout({
   children,
@@ -9,33 +7,41 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-dvh w-screen bg-sidebar">
-      <div className="flex w-full flex-col bg-background p-8 xl:w-[600px] xl:shrink-0 xl:rounded-r-2xl xl:border-r xl:border-border/40 md:p-16">
-        <Link
-          className="flex w-fit items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
-          href="/"
-        >
-          <ArrowLeftIcon className="size-3.5" />
-          Back
-        </Link>
-        <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-10">
-          <div className="flex flex-col gap-2">
-            <div className="mb-2">
-              <BrandLogo height={44} priority />
-            </div>
-            {children}
-          </div>
-        </div>
-      </div>
+    <div className="relative flex min-h-dvh w-full flex-col overflow-hidden bg-background">
+      {/* Soft brand glow + faint grid, purely decorative. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 -top-40 mx-auto h-[520px] max-w-3xl rounded-full bg-brand/15 blur-[120px] dark:bg-brand/10"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-[size:48px_48px] opacity-40 [mask-image:radial-gradient(ellipse_at_top,black_20%,transparent_70%)]"
+      />
 
-      <div className="hidden flex-1 flex-col overflow-hidden pl-12 xl:flex">
-        <div className="flex items-center gap-2 pt-8 text-[13px] text-muted-foreground">
-          <span>Study with TheStudent AI</span>
+      <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-5 py-12">
+        <div className="flex w-full max-w-[400px] flex-col items-center gap-8">
+          <BrandLogo height={40} priority />
+          {children}
         </div>
-        <div className="flex-1 pt-4">
-          <Preview />
-        </div>
-      </div>
+      </main>
+
+      <footer className="relative z-10 px-5 pb-6 text-center text-[12px] text-muted-foreground">
+        {"By continuing, you agree to our "}
+        <Link
+          className="cursor-pointer text-foreground/80 underline-offset-4 hover:underline"
+          href="/terms"
+        >
+          Terms
+        </Link>
+        {" and "}
+        <Link
+          className="cursor-pointer text-foreground/80 underline-offset-4 hover:underline"
+          href="/privacy"
+        >
+          Privacy Policy
+        </Link>
+        .
+      </footer>
     </div>
   );
 }
