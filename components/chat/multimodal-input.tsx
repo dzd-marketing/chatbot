@@ -18,7 +18,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import { useLocalStorage, useWindowSize } from "usehooks-ts";
+import { useLocalStorage } from "usehooks-ts";
 import { useActiveChat } from "@/hooks/use-active-chat";
 import { useChatModel } from "@/hooks/use-chat-models";
 import {
@@ -54,7 +54,7 @@ import {
 } from "./slash-commands";
 import { FeatureChip, StudyFeatureCards } from "./study-features";
 import type { VisibilityType } from "./visibility-selector";
-import { useCallSupported, VoiceCall } from "./voice-call";
+import { VoiceCall } from "./voice-call";
 import { MicButton, VoiceControls, VoicePanel } from "./voice-input";
 
 /** Documents are read as text on the server (api/files/upload). */
@@ -120,17 +120,22 @@ function PureMultimodalInput({
   const modelNameRef = useRef("This model");
   modelNameRef.current = currentModel?.name ?? "This model";
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { width } = useWindowSize();
-  const hasAutoFocused = useRef(false);
   useEffect(() => {
-    if (!hasAutoFocused.current && width) {
-      const timer = setTimeout(() => {
-        textareaRef.current?.focus();
-        hasAutoFocused.current = true;
-      }, 100);
-      return () => clearTimeout(timer);
+    // Don't subscribe to window resize here: Android WebView emits resize
+    // events while its keyboard animates, and re-rendering the composer for
+    // every frame makes the input jump. Also avoid opening the mobile keyboard
+    // automatically when the chat first loads.
+    if (
+      window.matchMedia("(pointer: coarse)").matches ||
+      navigator.maxTouchPoints > 0
+    ) {
+      return;
     }
-  }, [width]);
+    const frame = window.requestAnimationFrame(() => {
+      textareaRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   const [localStorageInput, setLocalStorageInput] = useLocalStorage(
     "input",
@@ -298,7 +303,10 @@ function PureMultimodalInput({
         setInput("");
       }
 
-      if (width && width > 768) {
+      if (
+        !window.matchMedia("(pointer: coarse)").matches &&
+        navigator.maxTouchPoints === 0
+      ) {
         textareaRef.current?.focus();
       }
     },
@@ -310,7 +318,6 @@ function PureMultimodalInput({
       sendMessage,
       setAttachments,
       setLocalStorageInput,
-      width,
       chatId,
     ]
   );
@@ -596,10 +603,9 @@ function PureMultimodalInput({
   const canSend =
     input.trim().length > 0 ||
     (attachments.length > 0 && (!feature || feature.attachmentOnly === true));
-  // Nothing typed: the speech button (voice conversation) replaces send.
-  const callSupported = useCallSupported();
+  // Nothing typed: keep the speech button visible even in WebViews that
+  // don't expose speech recognition; VoiceCall explains the limitation.
   const showCallButton =
-    callSupported &&
     !canSend &&
     attachments.length === 0 &&
     !feature &&

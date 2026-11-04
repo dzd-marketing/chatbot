@@ -5,6 +5,7 @@ import { AudioLinesIcon } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import { useLocalStorage } from "usehooks-ts";
 import type { PersonaState } from "@/components/ai-elements/persona";
 import {
@@ -130,13 +131,11 @@ const replyText = (message: ChatMessage) => {
   return { text: toSpeakable(spoken), written };
 };
 
-/** Voice conversations need speech recognition and a speech voice. */
+/** Recognition is required; speech output can fall back to custom audio or text. */
 export function useCallSupported() {
-  const [supported, setSupported] = useState(false);
+  const [supported, setSupported] = useState<boolean | null>(null);
   useEffect(() => {
-    setSupported(
-      getRecognitionConstructor() !== null && "speechSynthesis" in window
-    );
+    setSupported(getRecognitionConstructor() !== null);
   }, []);
   return supported;
 }
@@ -174,6 +173,12 @@ export function VoiceCall({
   disabled?: boolean;
 }) {
   const supported = useCallSupported();
+  const handleUnsupportedClick = useCallback(() => {
+    toast.error("Speech recognition isn't available in this WebView", {
+      description:
+        "Open TheStudent in Chrome or enable speech recognition in the Android app.",
+    });
+  }, []);
   const { chatId, messages, sendMessage, status, stop } = useActiveChat();
   const [lastLanguage, setLastLanguage] = useLocalStorage<CallLanguage>(
     "dzd-call-language",
@@ -611,8 +616,41 @@ export function VoiceCall({
     hint = "Tap the globe to stop";
   }
 
+  if (supported === null) {
+    if (!showTrigger) {
+      return null;
+    }
+    return (
+      <button
+        aria-label="Checking speech recognition support"
+        className="flex size-7 cursor-pointer items-center justify-center rounded-xl bg-primary text-primary-foreground outline-none transition-[opacity,scale] duration-200 hover:bg-primary/85 focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 max-md:size-9 max-md:rounded-full"
+        data-testid="voice-call-button"
+        disabled
+        title="Checking speech recognition support"
+        type="button"
+      >
+        <AudioLinesIcon className="size-4" />
+      </button>
+    );
+  }
+
   if (!supported) {
-    return null;
+    if (!showTrigger) {
+      return null;
+    }
+    return (
+      <button
+        aria-label="Voice mode unavailable"
+        className="flex size-7 cursor-pointer items-center justify-center rounded-xl bg-primary text-primary-foreground outline-none transition-[opacity,scale] duration-200 hover:bg-primary/85 focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 max-md:size-9 max-md:rounded-full"
+        data-testid="voice-call-button"
+        disabled={disabled}
+        onClick={handleUnsupportedClick}
+        title="Speech recognition isn't available in this browser"
+        type="button"
+      >
+        <AudioLinesIcon className="size-4" />
+      </button>
+    );
   }
 
   return (

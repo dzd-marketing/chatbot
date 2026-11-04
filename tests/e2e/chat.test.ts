@@ -25,17 +25,47 @@ test.describe("Chat Page", () => {
     page,
   }) => {
     await page.goto("/");
-    const supported = await page.evaluate(
-      () =>
-        ("SpeechRecognition" in window ||
-          "webkitSpeechRecognition" in window) &&
-        "speechSynthesis" in window
-    );
+    const supported = await page.evaluate(() => {
+      const speechWindow = window as unknown as {
+        SpeechRecognition?: unknown;
+        webkitSpeechRecognition?: unknown;
+      };
+      return (
+        typeof speechWindow.SpeechRecognition === "function" ||
+        typeof speechWindow.webkitSpeechRecognition === "function"
+      );
+    });
     test.skip(!supported, "No speech recognition in this browser");
-    await expect(page.getByTestId("voice-call-button")).toBeVisible();
+    const voiceButton = page.getByRole("button", {
+      name: "Talk with TheStudent AI",
+    });
+    await expect(voiceButton).toBeVisible();
     await expect(page.getByTestId("send-button")).toHaveCount(0);
-    await page.getByTestId("voice-call-button").click();
+    await voiceButton.click();
     await expect(page.getByTestId("call-language-menu")).toBeVisible();
+  });
+
+  test("shows a helpful speech button when recognition is unavailable", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "SpeechRecognition", {
+        configurable: true,
+        value: undefined,
+      });
+      Object.defineProperty(window, "webkitSpeechRecognition", {
+        configurable: true,
+        value: undefined,
+      });
+    });
+    await page.goto("/");
+
+    const button = page.getByRole("button", { name: "Voice mode unavailable" });
+    await expect(button).toBeVisible();
+    await button.click();
+    await expect(
+      page.getByText(/Speech recognition isn't available in this WebView/)
+    ).toBeVisible();
   });
 
   test("suggested actions are visible on empty chat", async ({ page }) => {

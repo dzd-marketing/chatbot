@@ -17,6 +17,68 @@ import {
 } from "@/components/chat/icons";
 import { generateUUID } from "@/lib/utils";
 
+const PYODIDE_BASE_URL = "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/";
+
+type PyodideInstance = {
+  loadPackagesFromImports: (
+    code: string,
+    options: { messageCallback: (message: string) => void }
+  ) => Promise<unknown>;
+  runPythonAsync: (code: string) => Promise<unknown>;
+  setStdout: (options: { batched: (output: string) => void }) => void;
+};
+
+type PyodideLoader = (options: {
+  indexURL: string;
+}) => Promise<PyodideInstance>;
+
+declare global {
+  interface Window {
+    loadPyodide?: PyodideLoader;
+  }
+}
+
+let pyodidePromise: Promise<PyodideInstance> | null = null;
+
+function loadPyodideRuntime(): Promise<PyodideInstance> {
+  if (pyodidePromise) {
+    return pyodidePromise;
+  }
+
+  const promise = new Promise<PyodideLoader>((resolve, reject) => {
+    if (typeof window.loadPyodide === "function") {
+      resolve(window.loadPyodide);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.async = true;
+    script.src = `${PYODIDE_BASE_URL}pyodide.js`;
+    script.onload = () => {
+      const { loadPyodide } = window;
+      if (typeof loadPyodide === "function") {
+        resolve(loadPyodide);
+      } else {
+        script.remove();
+        reject(new Error("The Python runtime could not be initialized."));
+      }
+    };
+    script.onerror = () => {
+      script.remove();
+      reject(new Error("The Python runtime could not be downloaded."));
+    };
+    document.head.append(script);
+  })
+    .then((loadPyodide) => loadPyodide({ indexURL: PYODIDE_BASE_URL }))
+    .catch((error: unknown) => {
+      pyodidePromise = null;
+      throw error;
+    });
+
+  pyodidePromise = promise;
+  return promise;
+}
+
 const OUTPUT_HANDLERS = {
   basic: `
     # Basic output capture setup
@@ -107,18 +169,15 @@ export const codeArtifact = new Artifact<"code", Metadata>({
           outputs: [
             ...metadata.outputs,
             {
-              contents: [],
+              contents: [{ type: "text", value: "Loading Python runtime…" }],
               id: runId,
-              status: "in_progress",
+              status: "loading_packages",
             },
           ],
         }));
 
         try {
-          // @ts-expect-error - loadPyodide is not defined
-          const currentPyodideInstance = await globalThis.loadPyodide({
-            indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/",
-          });
+          const currentPyodideInstance = await loadPyodideRuntime();
 
           currentPyodideInstance.setStdout({
             batched: (output: string) => {

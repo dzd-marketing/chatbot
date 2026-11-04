@@ -93,7 +93,7 @@ export default defineConfig({
     command: "pnpm dev",
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
-    url: `${baseURL}/ping`,
+    url: `${baseURL}/favicon.ico`,
   },
   /* Limit workers to prevent browser crashes */
   workers: process.env.CI ? 2 : 2,

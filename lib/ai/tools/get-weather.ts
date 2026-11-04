@@ -55,17 +55,25 @@ export const getWeather = tool({
       };
     }
 
-    const response = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m&hourly=temperature_2m&daily=sunrise,sunset&timezone=auto`
-    );
+    try {
+      const response = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m&hourly=temperature_2m&daily=sunrise,sunset&timezone=auto`
+      );
+      if (!response.ok) {
+        return { error: "Weather data is temporarily unavailable." };
+      }
 
-    const weatherData = await response.json();
-
-    if ("city" in input) {
-      weatherData.cityName = input.city;
+      const weatherData = await response.json();
+      if (!weatherData || typeof weatherData !== "object") {
+        return { error: "Weather data is temporarily unavailable." };
+      }
+      if ("city" in input) {
+        weatherData.cityName = input.city;
+      }
+      return weatherData;
+    } catch {
+      return { error: "Weather data is temporarily unavailable." };
     }
-
-    return weatherData;
   },
   inputSchema: z.object({
     city: z
