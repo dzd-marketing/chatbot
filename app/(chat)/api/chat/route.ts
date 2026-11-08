@@ -79,6 +79,9 @@ const ROUTING_DEADLINE_MS = 285_000;
 
 const HEALTH_CHECK_DELAY_MS = 9000;
 
+const OPEN_CODE_TOOL_AVAILABILITY_PROMPT = `## Website tool availability
+Only call website tools listed in this request's tool definitions. The set can change between turns as the student changes the Tools menu. If a needed tool is not listed, don't claim or attempt to use it; help with what is available instead.`;
+
 function isModelStreamActivity(chunk: { type: string }) {
   return !["start", "start-step", "finish-step", "finish", "raw"].includes(
     chunk.type
@@ -411,28 +414,30 @@ export async function POST(request: Request) {
             supportsTools: false,
             webSearch: toolSettings.webSearch,
           });
-        // The private OpenCode Space uses a hardened no-tools tutor agent.
-        // Don't let this fallback claim it can use tools from the website.
-        const openCodeInstructions = voice
+        // OpenCode sessions keep their first system prompt. Keep its tool
+        // policy stable across menu changes; the active tool schemas sent with
+        // each call are authoritative, and execution stays on this server.
+        const openCodeBaseInstructions = voice
           ? voiceSystemPrompt({
               builtInWebSearch: false,
-              calculator: false,
+              calculator: true,
               interruptedAfter,
               language: voice.language,
               requestHints,
-              supportsTools: false,
-              webSearch: false,
+              supportsTools: true,
+              webSearch: true,
             })
           : systemPrompt({
               builtInWebSearch: false,
-              calculator: false,
-              documents: false,
-              pageReading: false,
+              calculator: true,
+              documents: true,
+              pageReading: true,
               requestHints,
-              study: false,
-              supportsTools: false,
-              webSearch: false,
+              study: true,
+              supportsTools: true,
+              webSearch: true,
             });
+        const openCodeInstructions = `${openCodeBaseInstructions}\n\n${OPEN_CODE_TOOL_AVAILABILITY_PROMPT}`;
 
         const result = streamText({
           // Models without tool support get no tools at all (llama.cpp, for

@@ -36,7 +36,7 @@ export function getChatRouteMode(modelId: ChatModelId): ChatRouteMode {
  * browsers skip responses cached by older deployments; bump it when the
  * response shape changes.
  */
-export const MODELS_API_URL = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models?v=4`;
+export const MODELS_API_URL = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models?v=5`;
 
 export type ModelCapabilities = {
   tools: boolean;
@@ -182,7 +182,7 @@ export const dzdFlashCapabilities: ModelCapabilities = {
 
 export const dzdStudyCapabilities: ModelCapabilities = {
   reasoning: true,
-  tools: false,
+  tools: true,
   vision: false,
 };
 

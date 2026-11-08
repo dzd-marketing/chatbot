@@ -556,8 +556,9 @@ function forDzd(
 }
 
 /**
- * OpenCode is a no-tools text fallback. Send the full transcript: the bridge
- * de-duplicates it for a live session and needs it to recover after a reset.
+ * OpenCode can request the website's allowlisted custom tools. Send the full
+ * transcript, including prior calls and results: the bridge de-duplicates it
+ * for a live session and needs it to recover after a reset.
  */
 function forOpenCode(
   options: LanguageModelV4CallOptions,
@@ -578,12 +579,17 @@ function forOpenCode(
         turns.push({ content, role: "user" });
       }
     } else if (message.role === "assistant") {
-      const content = message.content
-        .filter((part) => part.type === "text" && part.text.trim())
-        .map((part) => part);
+      const content = message.content.filter(
+        (part) =>
+          (part.type === "text" && part.text.trim()) ||
+          part.type === "tool-call" ||
+          part.type === "tool-result"
+      );
       if (content.length > 0) {
         turns.push({ content, role: "assistant" });
       }
+    } else if (message.role === "tool") {
+      turns.push(message);
     }
   }
 
@@ -596,8 +602,6 @@ function forOpenCode(
       ? [{ content: system, role: "system" }, ...history]
       : history,
     providerOptions: {},
-    toolChoice: undefined,
-    tools: undefined,
   };
 }
 
@@ -619,7 +623,7 @@ export type RouterOptions = {
   dzdHooks?: DzdStreamHooks;
   /** Instructions for TheStudent's own model (it has its own web search). */
   dzdInstructions?: string;
-  /** Chat-keyed OpenCode session and its no-tools tutoring instructions. */
+  /** Chat-keyed OpenCode session and its website-tool-aware instructions. */
   openCodeSessionKey?: string;
   openCodeInstructions?: string;
   /** Time (ms since epoch) by which a reply must have started. */

@@ -45,14 +45,48 @@ function openCodeModelId() {
   return process.env.OPENCODE_MODEL?.trim() || DEFAULT_MODEL;
 }
 
-/** Separate chat and voice prompts because the Space applies system text on turn one. */
+// When first-turn policy changes, bump the current version and keep its
+// predecessor here so deleting a chat removes every remote session for it.
+const OPEN_CODE_PROMPT_VERSION = "tools-v1";
+const PREVIOUS_OPEN_CODE_PROMPT_VERSIONS: readonly string[] = [];
+const OPEN_CODE_PROMPT_VERSIONS = [
+  ...PREVIOUS_OPEN_CODE_PROMPT_VERSIONS,
+  OPEN_CODE_PROMPT_VERSION,
+];
+
+type OpenCodeMode = "chat" | "voice";
+
+function openCodeSessionKeyForVersion(
+  chatId: string,
+  mode: OpenCodeMode,
+  version: string
+) {
+  const modeSuffix = mode === "voice" ? ":voice" : "";
+  return `thestudent:${chatId}${modeSuffix}:${version}`;
+}
+
+/** Separate chat and voice sessions because the Space applies prompt on turn one. */
 export function openCodeSessionKey(
   chatId: string,
-  mode: "chat" | "voice" = "chat"
+  mode: OpenCodeMode = "chat"
 ) {
+  return openCodeSessionKeyForVersion(chatId, mode, OPEN_CODE_PROMPT_VERSION);
+}
+
+/** Pre-version session keys are still reset when the student deletes a chat. */
+function legacyOpenCodeSessionKey(chatId: string, mode: OpenCodeMode) {
   return mode === "voice"
     ? `thestudent:${chatId}:voice`
     : `thestudent:${chatId}`;
+}
+
+function openCodeSessionKeys(chatId: string, mode: OpenCodeMode) {
+  return [
+    ...OPEN_CODE_PROMPT_VERSIONS.map((version) =>
+      openCodeSessionKeyForVersion(chatId, mode, version)
+    ),
+    legacyOpenCodeSessionKey(chatId, mode),
+  ];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -208,10 +242,17 @@ function createBridgeFetch({
           const json = parsed as OpenCodeBody;
           json.model = openCodeModelId();
           json.user = sessionKey;
-          // The user-role Space key independently enforces this policy. Keep
-          // the request explicit too: the website's tools never reach Space.
-          json.tools = false;
-          json.tool_choice = "none";
+          // Only the currently enabled website tool schemas are supplied by
+          // the server-side chat route. Leave them intact for the bridge, but
+          // explicitly disable tool calls when there are none (or a final step
+          // has exhausted its tool budget).
+          const hasTools = Array.isArray(json.tools) && json.tools.length > 0;
+          if (hasTools) {
+            json.tool_choice ??= "auto";
+          } else {
+            json.tools = false;
+            json.tool_choice = "none";
+          }
           json.reasoning =
             reasoningLevel === "off"
               ? false
@@ -223,7 +264,7 @@ function createBridgeFetch({
             agent: "tutor",
             attempt_timeout: 25,
             emit_reasoning: false,
-            emit_tool_calls: false,
+            emit_tool_calls: hasTools && json.tool_choice !== "none",
             system_mode: "field",
             timeout: 120,
           };
@@ -311,7 +352,7 @@ async function resetOneOpenCodeSession(sessionKey: string) {
   }
 }
 
-/** Delete Space-side sessions before their corresponding website chats. */
+/** Delete current and legacy Space sessions before their website chats. */
 export async function resetOpenCodeSessionsForChats(chatIds: string[]) {
   if (chatIds.length === 0) {
     return;
@@ -326,8 +367,8 @@ export async function resetOpenCodeSessionsForChats(chatIds: string[]) {
   }
 
   const sessionKeys = [...new Set(chatIds)].flatMap((chatId) => [
-    openCodeSessionKey(chatId, "chat"),
-    openCodeSessionKey(chatId, "voice"),
+    ...openCodeSessionKeys(chatId, "chat"),
+    ...openCodeSessionKeys(chatId, "voice"),
   ]);
   let next = 0;
   const workerCount = Math.min(5, sessionKeys.length);
