@@ -6,29 +6,37 @@ import type { VisibilityType } from "@/components/chat/visibility-selector";
 import { titlePrompt } from "@/lib/ai/prompts";
 import { getTitleModel } from "@/lib/ai/providers";
 import {
+  fallbackTitleFromText,
+  normalizeGeneratedTitle,
+  titleTextFromParts,
+} from "@/lib/chat/title";
+import {
   deleteMessagesByChatIdAfterTimestamp,
   getChatById,
   getMessageById,
   updateChatVisibilityById,
 } from "@/lib/db/queries";
-import { getTextFromMessage } from "@/lib/utils";
 
 export async function generateTitleFromUserMessage({
   message,
 }: {
   message: UIMessage;
 }) {
-  const { text } = await generateText({
-    instructions: titlePrompt,
-    // The router handles busy models, so the SDK doesn't retry on top.
-    maxRetries: 0,
-    model: getTitleModel(),
-    prompt: getTextFromMessage(message),
-  });
-  return text
-    .replace(/^[#*"\s]+/, "")
-    .replace(/["]+$/, "")
-    .trim();
+  const sourceText = titleTextFromParts(message.parts);
+  const fallbackTitle = fallbackTitleFromText(sourceText);
+
+  try {
+    const { text } = await generateText({
+      instructions: titlePrompt,
+      // The router handles busy models, so the SDK doesn't retry on top.
+      maxRetries: 0,
+      model: getTitleModel(),
+      prompt: sourceText,
+    });
+    return normalizeGeneratedTitle(text, sourceText);
+  } catch {
+    return fallbackTitle;
+  }
 }
 
 export async function deleteTrailingMessages({ id }: { id: string }) {

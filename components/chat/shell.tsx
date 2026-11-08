@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { Artifact } from "./artifact";
 import { ChatHeader } from "./chat-header";
 import { DataStreamHandler } from "./data-stream-handler";
-import { Greeting, WelcomeBackdrop } from "./greeting";
+import { Greeting } from "./greeting";
 import { submitEditedMessage } from "./message-editor";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
@@ -165,7 +165,6 @@ export function ChatShell() {
                     : "contents"
                 )}
               >
-                {showWelcome ? <WelcomeBackdrop /> : null}
                 {showWelcome ? <Greeting /> : null}
                 {!isReadonly && (
                   <MultimodalInput

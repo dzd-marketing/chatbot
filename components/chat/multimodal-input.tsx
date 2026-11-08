@@ -733,7 +733,7 @@ function PureMultimodalInput({
       </div>
 
       <PromptInput
-        className="dzd-gradient-border rounded-2xl [&>div]:rounded-2xl [&>div]:border [&>div]:border-border/30 [&>div]:bg-card/70 [&>div]:shadow-[var(--shadow-composer)] [&>div]:has-[[data-slot=input-group-control]:focus-visible]:border-border/30 [&>div]:has-[[data-slot=input-group-control]:focus-visible]:ring-0"
+        className="rounded-2xl border border-border/40 bg-card shadow-[var(--shadow-composer)] dark:bg-black [&>div]:rounded-2xl [&>div]:border-0 [&>div]:bg-transparent [&>div]:shadow-none [&>div]:has-[[data-slot=input-group-control]:focus-visible]:border-0 [&>div]:has-[[data-slot=input-group-control]:focus-visible]:ring-0"
         onSubmit={handlePromptSubmit}
       >
         {feature && !editingMessage ? (
@@ -889,7 +889,7 @@ function PureMultimodalInput({
                       status={status}
                       variant="secondary"
                     >
-                      <ArrowUpIcon className="size-4" />
+                      <ArrowUpIcon className="size-5" />
                     </PromptInputSubmit>
                   )}
                   {/* Stays mounted during a call (the status changes). */}
@@ -1016,13 +1016,13 @@ function PureAttachmentsButton({
   const button = (
     <Button
       aria-label="Attach files"
-      className="h-7 w-7 rounded-lg border border-border/40 p-1 text-foreground transition-colors hover:border-border hover:text-foreground"
+      className="h-8 w-8 rounded-lg border border-border/40 p-1.5 text-foreground transition-colors hover:border-border hover:text-foreground"
       data-testid="attachments-button"
       disabled={status !== "ready"}
       onClick={handleClick}
       variant="ghost"
     >
-      <PaperclipIcon size={14} style={{ height: 14, width: 14 }} />
+      <PaperclipIcon size={18} style={{ height: 18, width: 18 }} />
     </Button>
   );
 
@@ -1054,7 +1054,7 @@ function DzdLearnLabel() {
       className="flex h-7 min-w-0 select-none items-center gap-1.5 px-2 font-medium text-[12px] text-foreground/75 max-md:h-9 max-md:px-2.5 max-md:text-[13px]"
       data-testid="assistant-label"
     >
-      <BrandMark size={18} />
+      <BrandMark size={20} />
       <span className="truncate">TheStudent AI</span>
     </div>
   );

@@ -532,14 +532,14 @@ ${formatting}
 ${currentContent}`;
 };
 
-export const titlePrompt = `Generate a short chat title (2-5 words) summarizing the user's message.
+export const titlePrompt = `Generate a specific, concise chat title (2-5 words) that describes the user's topic.
 
-Output ONLY the title text. No prefixes, no formatting.
+Use the same language as the user's message. Keep important names, subjects, and key terms. Avoid generic titles such as "New chat" or "New conversation" unless the message is only a greeting or has no identifiable topic.
+
+Output ONLY the title text. No prefixes, formatting, or quotes.
 
 Examples:
 - "what's the weather in nyc" → Weather in NYC
 - "help me write an essay about space" → Space Essay Help
 - "hi" → New Conversation
-- "debug my python code" → Python Debugging
-
-Never output hashtags, prefixes like "Title:", or quotes.`;
+- "debug my python code" → Python Debugging`;

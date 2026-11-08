@@ -1,6 +1,12 @@
 import type { NextRequest } from "next/server";
 import { auth } from "@/app/(auth)/auth";
-import { deleteAllChatsByUserId, getChatsByUserId } from "@/lib/db/queries";
+import { fallbackTitleFromText, titleTextFromParts } from "@/lib/chat/title";
+import {
+  deleteAllChatsByUserId,
+  getChatsByUserId,
+  getFirstUserMessagesByChatIds,
+  updateChatTitleById,
+} from "@/lib/db/queries";
 import { ChatbotError } from "@/lib/errors";
 
 export async function GET(request: NextRequest) {
@@ -32,6 +38,36 @@ export async function GET(request: NextRequest) {
     limit,
     startingAfter,
   });
+
+  const untitledChats = chats.chats.filter(
+    (chat) => chat.title.trim().toLowerCase() === "new chat"
+  );
+  if (untitledChats.length > 0) {
+    try {
+      const firstUserMessages = await getFirstUserMessagesByChatIds({
+        chatIds: untitledChats.map((chat) => chat.id),
+      });
+      const titlesByChatId = new Map(
+        firstUserMessages.map(({ chatId, parts }) => [
+          chatId,
+          fallbackTitleFromText(titleTextFromParts(parts)),
+        ])
+      );
+
+      await Promise.all(
+        untitledChats.map(async (chat) => {
+          const title = titlesByChatId.get(chat.id);
+          if (!title) {
+            return;
+          }
+          await updateChatTitleById({ chatId: chat.id, title });
+          chat.title = title;
+        })
+      );
+    } catch {
+      // A failed title repair must not make chat history unavailable.
+    }
+  }
 
   return Response.json(chats);
 }

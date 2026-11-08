@@ -623,13 +623,13 @@ export function VoiceCall({
     return (
       <button
         aria-label="Checking speech recognition support"
-        className="flex size-7 cursor-pointer items-center justify-center rounded-xl bg-primary text-primary-foreground outline-none transition-[opacity,scale] duration-200 hover:bg-primary/85 focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 max-md:size-9 max-md:rounded-full"
+        className="flex size-8 cursor-pointer items-center justify-center rounded-xl bg-primary text-primary-foreground outline-none transition-[opacity,scale] duration-200 hover:bg-primary/85 focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 max-md:size-10 max-md:rounded-full"
         data-testid="voice-call-button"
         disabled
         title="Checking speech recognition support"
         type="button"
       >
-        <AudioLinesIcon className="size-4" />
+        <AudioLinesIcon className="size-5" />
       </button>
     );
   }
@@ -641,14 +641,14 @@ export function VoiceCall({
     return (
       <button
         aria-label="Voice mode unavailable"
-        className="flex size-7 cursor-pointer items-center justify-center rounded-xl bg-primary text-primary-foreground outline-none transition-[opacity,scale] duration-200 hover:bg-primary/85 focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 max-md:size-9 max-md:rounded-full"
+        className="flex size-8 cursor-pointer items-center justify-center rounded-xl bg-primary text-primary-foreground outline-none transition-[opacity,scale] duration-200 hover:bg-primary/85 focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 max-md:size-10 max-md:rounded-full"
         data-testid="voice-call-button"
         disabled={disabled}
         onClick={handleUnsupportedClick}
         title="Speech recognition isn't available in this browser"
         type="button"
       >
-        <AudioLinesIcon className="size-4" />
+        <AudioLinesIcon className="size-5" />
       </button>
     );
   }
@@ -664,13 +664,13 @@ export function VoiceCall({
           trigger={
             <button
               aria-label="Talk with TheStudent AI"
-              className="flex size-7 cursor-pointer items-center justify-center rounded-xl bg-primary text-primary-foreground outline-none transition-[opacity,scale] duration-200 hover:bg-primary/85 focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 max-md:size-9 max-md:rounded-full"
+              className="flex size-8 cursor-pointer items-center justify-center rounded-xl bg-primary text-primary-foreground outline-none transition-[opacity,scale] duration-200 hover:bg-primary/85 focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 max-md:size-10 max-md:rounded-full"
               data-testid="voice-call-button"
               disabled={disabled}
               title="Talk with TheStudent AI"
               type="button"
             >
-              <AudioLinesIcon className="size-4" />
+              <AudioLinesIcon className="size-5" />
             </button>
           }
           triggerDisabled={disabled}

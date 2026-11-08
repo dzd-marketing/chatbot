@@ -628,8 +628,8 @@ const PurePreviewMessage = ({
         )}
       >
         {isAssistant && (
-          <div className="flex h-[calc(15px*1.65)] shrink-0 items-center">
-            <BrandMark size={28} title="TheStudent AI" />
+          <div className="flex h-8 shrink-0 items-center">
+            <BrandMark size={30} title="TheStudent AI" />
           </div>
         )}
         {isAssistant ? (
@@ -651,8 +651,8 @@ export const ThinkingMessage = () => (
     data-testid="message-assistant-loading"
   >
     <div className="flex items-start gap-3">
-      <div className="flex h-[calc(15px*1.65)] shrink-0 items-center">
-        <BrandMark size={28} title="TheStudent AI" />
+      <div className="flex h-8 shrink-0 items-center">
+        <BrandMark size={30} title="TheStudent AI" />
       </div>
 
       <WaitingText />

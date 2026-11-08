@@ -279,6 +279,29 @@ export async function getMessagesByChatId({ id }: { id: string }) {
   }
 }
 
+export async function getFirstUserMessagesByChatIds({
+  chatIds,
+}: {
+  chatIds: string[];
+}) {
+  if (chatIds.length === 0) {
+    return [];
+  }
+
+  try {
+    return await db
+      .selectDistinctOn([message.chatId], {
+        chatId: message.chatId,
+        parts: message.parts,
+      })
+      .from(message)
+      .where(and(inArray(message.chatId, chatIds), eq(message.role, "user")))
+      .orderBy(asc(message.chatId), asc(message.createdAt), asc(message.id));
+  } catch (error) {
+    throw new ChatbotError("bad_request:database", { cause: error });
+  }
+}
+
 export async function voteMessage({
   chatId,
   messageId,

@@ -43,6 +43,7 @@ import { createFlashcards, createQuiz } from "@/lib/ai/tools/study";
 import { updateDocument } from "@/lib/ai/tools/update-document";
 import { webFetch, webSearch } from "@/lib/ai/tools/web";
 import { markStopped } from "@/lib/chat/stopped";
+import { fallbackTitleFromText, titleTextFromParts } from "@/lib/chat/title";
 import { isProductionEnvironment, isTestEnvironment } from "@/lib/constants";
 import {
   createStreamId,
@@ -179,7 +180,7 @@ export async function POST(request: Request) {
     } else if (message?.role === "user") {
       await saveChat({
         id,
-        title: "New chat",
+        title: fallbackTitleFromText(titleTextFromParts(message.parts)),
         userId: session.user.id,
         visibility: selectedVisibilityType,
       });
@@ -590,7 +591,7 @@ export async function POST(request: Request) {
           try {
             const title = await titlePromise;
             dataStream.write({ data: title, type: "data-chat-title" });
-            updateChatTitleById({ chatId: id, title });
+            await updateChatTitleById({ chatId: id, title });
           } catch {
             /* non-fatal */
           }

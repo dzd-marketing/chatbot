@@ -169,7 +169,7 @@ export function ComposerVoiceButton({
       {active ? (
         <SquareIcon className="size-3 fill-current" />
       ) : (
-        <MicIcon className="size-4" />
+        <MicIcon className="size-5" />
       )}
     </button>
   );

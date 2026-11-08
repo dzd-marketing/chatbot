@@ -22,21 +22,3 @@ export const Greeting = () => (
     </motion.h1>
   </div>
 );
-
-/**
- * Soft ambient glow behind the welcome column, in the orb's colours. It runs
- * the orb's own hue-shift keyframes with the same timing (both mount
- * together), so the background changes colour in step with the orb.
- * Styles: .dzd-welcome-glow in app/globals.css.
- */
-export const WelcomeBackdrop = () => (
-  <motion.div
-    animate={{ opacity: 1 }}
-    aria-hidden="true"
-    className="dzd-welcome-glow"
-    initial={{ opacity: 0 }}
-    transition={{ duration: 1.2, ease: "easeOut" }}
-  >
-    <div className="dzd-welcome-glow-layer" />
-  </motion.div>
-);

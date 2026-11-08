@@ -61,8 +61,8 @@ export const AttachmentIcon = () => (
  * flash or hydration mismatch when the theme is applied.
  */
 const LOGO = {
-  dark: { height: 200, src: "/brand/thestudent-logo-dark.webp", width: 699 },
-  light: { height: 200, src: "/brand/thestudent-logo-light.webp", width: 724 },
+  dark: { height: 401, src: "/brand/thestudent-logo-dark.webp", width: 1400 },
+  light: { height: 387, src: "/brand/thestudent-logo-light.webp", width: 1400 },
 } as const;
 const MARK = {
   dark: "/brand/thestudent-mark-dark.webp",

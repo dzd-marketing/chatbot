@@ -40,7 +40,7 @@ function PureChatHeader({
         className="flex items-center rounded-lg px-1 md:hidden"
         href="/"
       >
-        <BrandLogo height={28} priority />
+        <BrandLogo height={32} priority />
       </Link>
 
       {!isReadonly && (

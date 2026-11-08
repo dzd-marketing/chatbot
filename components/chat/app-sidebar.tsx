@@ -115,7 +115,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                 href="/"
                 onClick={closeMobile}
               >
-                <BrandLogo height={34} priority />
+                <BrandLogo height={36} priority />
               </Link>
               <div className="group-data-[collapsible=icon]:hidden">
                 <SidebarTrigger className="size-8 rounded-lg text-sidebar-foreground/70 transition-colors duration-150 hover:bg-sidebar-accent hover:text-foreground" />
