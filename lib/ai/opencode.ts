@@ -44,8 +44,14 @@ function openCodeModelId() {
   return process.env.OPENCODE_MODEL?.trim() || DEFAULT_MODEL;
 }
 
-export function openCodeSessionKey(chatId: string) {
-  return `thestudent:${chatId}`;
+/** Separate chat and voice prompts because the Space applies system text on turn one. */
+export function openCodeSessionKey(
+  chatId: string,
+  mode: "chat" | "voice" = "chat"
+) {
+  return mode === "voice"
+    ? `thestudent:${chatId}:voice`
+    : `thestudent:${chatId}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -316,7 +322,10 @@ export async function resetOpenCodeSessionsForChats(chatIds: string[]) {
     return;
   }
 
-  const sessionKeys = [...new Set(chatIds)].map(openCodeSessionKey);
+  const sessionKeys = [...new Set(chatIds)].flatMap((chatId) => [
+    openCodeSessionKey(chatId, "chat"),
+    openCodeSessionKey(chatId, "voice"),
+  ]);
   let next = 0;
   const workerCount = Math.min(5, sessionKeys.length);
   const workers = Array.from({ length: workerCount }, async () => {

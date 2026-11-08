@@ -536,16 +536,10 @@ function forDzd(
   };
 }
 
-const OPENCODE_HISTORY_MESSAGES = 20;
-const OPENCODE_MAX_TEXT_CHARS = 20_000;
-
-function capOpenCodeText(text: string) {
-  return text.length > OPENCODE_MAX_TEXT_CHARS
-    ? `${text.slice(0, OPENCODE_MAX_TEXT_CHARS)}\n\n[...shortened]`
-    : text;
-}
-
-/** OpenCode is a no-tools text fallback; don't send tool calls or file parts. */
+/**
+ * OpenCode is a no-tools text fallback. Send the full transcript: the bridge
+ * de-duplicates it for a live session and needs it to recover after a reset.
+ */
 function forOpenCode(
   options: LanguageModelV4CallOptions,
   instructions: string | undefined
@@ -560,9 +554,7 @@ function forOpenCode(
 
   for (const message of options.prompt) {
     if (message.role === "user") {
-      const content = message.content
-        .filter((part) => part.type === "text")
-        .map((part) => ({ ...part, text: capOpenCodeText(part.text) }));
+      const content = message.content.filter((part) => part.type === "text");
       if (content.length > 0) {
         turns.push({ content, role: "user" });
       }
@@ -576,13 +568,14 @@ function forOpenCode(
     }
   }
 
-  let recent = turns.slice(-OPENCODE_HISTORY_MESSAGES);
-  const firstUser = recent.findIndex((message) => message.role === "user");
-  recent = firstUser > 0 ? recent.slice(firstUser) : recent;
+  const firstUser = turns.findIndex((message) => message.role === "user");
+  const history = firstUser > 0 ? turns.slice(firstUser) : turns;
 
   return {
     ...options,
-    prompt: system ? [{ content: system, role: "system" }, ...recent] : recent,
+    prompt: system
+      ? [{ content: system, role: "system" }, ...history]
+      : history,
     providerOptions: {},
     toolChoice: undefined,
     tools: undefined,

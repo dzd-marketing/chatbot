@@ -481,7 +481,10 @@ export async function POST(request: Request) {
               );
             },
             openCodeInstructions,
-            openCodeSessionKey: makeOpenCodeSessionKey(id),
+            openCodeSessionKey: makeOpenCodeSessionKey(
+              id,
+              voice ? "voice" : "chat"
+            ),
             // Voice: the quick model first, and less waiting on slow ones.
             purpose: voice ? "voice" : "chat",
             reasoningLevel,
