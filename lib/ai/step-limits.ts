@@ -35,18 +35,21 @@ const DOCUMENT_TOOLS = new Set<string>([
 ]);
 
 /**
- * streamText's prepareStep: tools stay available until the time budget is
- * used up (or the safety net is reached); then a final answer step without
- * tools, so a reply never ends right after a tool call.
+ * streamText's prepareStep: a required retrieval can be forced on step zero;
+ * tools then stay available until the time budget is used up (or the safety
+ * net is reached), followed by a final answer step without tools.
  */
 export function createPrepareStep({
   enabledTools,
   instructions,
+  requiredFirstTool,
   startedAt = Date.now(),
   now = Date.now,
 }: {
   enabledTools: ChatToolName[];
   instructions: string;
+  /** Force a specific tool on step zero for requests that require retrieval. */
+  requiredFirstTool?: ChatToolName;
   /** When the request started (ms). */
   startedAt?: number;
   /** For tests. */
@@ -62,6 +65,15 @@ export function createPrepareStep({
         activeTools: [] as ChatToolName[],
         instructions: `${instructions}\n\n${FINAL_STEP_NOTE}`,
         toolChoice: "none" as const,
+      };
+    }
+    if (
+      stepNumber === 0 &&
+      requiredFirstTool &&
+      enabledTools.includes(requiredFirstTool)
+    ) {
+      return {
+        toolChoice: { toolName: requiredFirstTool, type: "tool" as const },
       };
     }
     // Once a document was created or rewritten, the document tools are

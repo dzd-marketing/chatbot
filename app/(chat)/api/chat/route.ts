@@ -35,6 +35,7 @@ import { getLanguageModel } from "@/lib/ai/providers";
 import { describeError, routerErrorMessage } from "@/lib/ai/router";
 import { createPrepareStep, MAX_STEPS } from "@/lib/ai/step-limits";
 import { activeToolNames, resolveToolSettings } from "@/lib/ai/tool-groups";
+import { isExamResourceRequest } from "@/lib/ai/tool-intent";
 import { calculate } from "@/lib/ai/tools/calculate";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
@@ -110,6 +111,23 @@ function withSpokenReminder(
       ? `${last.content}\n\n${reminder}`
       : [...last.content, { text: reminder, type: "text" }];
   return [...messages.slice(0, -1), { ...last, content }];
+}
+
+function newUserMessageText(message: PostRequestBody["message"]) {
+  if (!message) {
+    return "";
+  }
+  return message.parts
+    .map((part) => {
+      if (part.type === "text") {
+        return part.text;
+      }
+      if (part.type === "data-voice") {
+        return part.data.words.map((word) => word.text).join(" ");
+      }
+      return "";
+    })
+    .join("\n");
 }
 
 function getStreamContext() {
@@ -371,6 +389,11 @@ export async function POST(request: Request) {
         };
 
         const enabledTools = supportsTools ? activeToolNames(toolSettings) : [];
+        const requiredFirstTool =
+          enabledTools.includes("webSearch") &&
+          isExamResourceRequest(newUserMessageText(message))
+            ? "webSearch"
+            : undefined;
         // A voice call gets its own system prompt instead of the chat one:
         // the chat prompt asks for headings, lists, LaTeX and links.
         const interruptedAfter = voice
@@ -501,11 +524,27 @@ export async function POST(request: Request) {
           onError() {
             stopWaitingStatus();
           },
+          onFinish({ finishReason, stepNumber, toolCalls }) {
+            if (
+              requiredFirstTool ||
+              finishReason === "length" ||
+              toolCalls.length > 0
+            ) {
+              console.info("[chat-generation] completed", {
+                finishReason,
+                requestId: request.headers.get("x-vercel-id") ?? undefined,
+                requiredFirstTool: requiredFirstTool ?? null,
+                stepCount: stepNumber + 1,
+                toolNames: toolCalls.map((call) => call.toolName),
+              });
+            }
+          },
           // No limit on searches or page reads, only on time; the last
           // step always writes the answer.
           prepareStep: createPrepareStep({
             enabledTools,
             instructions,
+            requiredFirstTool,
             startedAt,
           }),
           stopWhen: isStepCount(MAX_STEPS),
