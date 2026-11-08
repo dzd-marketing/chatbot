@@ -172,6 +172,77 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const setMessagesRef = useRef<
     UseChatHelpers<ChatMessage>["setMessages"] | null
   >(null);
+  const voiceRequestRef = useRef(false);
+
+  const finalizeReply = (
+    assistantMessageId: string,
+    voice: boolean,
+    generateSuggestions: boolean
+  ) => {
+    fetch(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat/finalize`, {
+      body: JSON.stringify({
+        assistantMessageId,
+        chatId,
+        generateSuggestions,
+        voice,
+      }),
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      method: "POST",
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          return;
+        }
+        const result: unknown = await response.json();
+        if (typeof result !== "object" || result === null) {
+          return;
+        }
+        const data = result as {
+          assistantMessageId?: unknown;
+          suggestions?: unknown;
+          title?: unknown;
+        };
+        if (data.assistantMessageId !== assistantMessageId) {
+          return;
+        }
+
+        const suggestions = Array.isArray(data.suggestions)
+          ? data.suggestions.filter(
+              (suggestion): suggestion is string =>
+                typeof suggestion === "string"
+            )
+          : [];
+        if (suggestions.length > 0) {
+          setMessagesRef.current?.((current) =>
+            current.map((currentMessage) => {
+              if (
+                currentMessage.id !== assistantMessageId ||
+                currentMessage.parts.some(
+                  (part) => part.type === "data-suggestions"
+                )
+              ) {
+                return currentMessage;
+              }
+              return {
+                ...currentMessage,
+                parts: [
+                  ...currentMessage.parts,
+                  { data: suggestions, type: "data-suggestions" },
+                ],
+              };
+            })
+          );
+        }
+
+        if (typeof data.title === "string") {
+          mutate(unstable_serialize(getChatHistoryPaginationKey));
+        }
+      })
+      .catch(() => {
+        // Follow-up suggestions and generated titles are optional.
+      });
+  };
 
   const { data: chatData, isLoading } = useSWR(
     isNewChat
@@ -220,7 +291,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    onFinish: ({ isAbort }) => {
+    onFinish: ({ finishReason, isAbort, isDisconnect, isError, message }) => {
       // The Stop button marks the reply at once; mark it again after the
       // stream's last update in case that update replaced it.
       if (isAbort) {
@@ -228,6 +299,17 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
           withStoppedReply(current, generateUUID)
         );
       }
+
+      const isVoiceRequest = voiceRequestRef.current;
+      voiceRequestRef.current = false;
+      finalizeReply(
+        message.id,
+        isVoiceRequest,
+        !isAbort &&
+          !isDisconnect &&
+          !isError &&
+          (finishReason === "stop" || finishReason === "length")
+      );
       mutate(unstable_serialize(getChatHistoryPaginationKey));
     },
     sendAutomaticallyWhen: ({ messages: currentMessages }) => {
@@ -246,6 +328,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       api: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat`,
       fetch: fetchWithErrorHandlers,
       prepareSendMessagesRequest(request) {
+        voiceRequestRef.current = Boolean(request.body?.voice);
         const lastMessage = request.messages.at(-1);
         const isToolApprovalContinuation =
           lastMessage?.role !== "user" ||
