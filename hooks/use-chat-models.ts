@@ -20,9 +20,8 @@ const fetchModels = (url: string): Promise<ModelsResponse> =>
   fetch(url).then((response) => response.json());
 
 /**
- * Selectable models (the curated list plus models discovered by the server,
- * such as NVIDIA's) and their capabilities, from /api/models. Every caller
- * shares one request and one SWR cache entry.
+ * Branded TheStudent AI choices and their capabilities from /api/models.
+ * Every caller shares one request and one SWR cache entry.
  */
 export function useChatModels() {
   const { data, isLoading } = useSWR(MODELS_API_URL, fetchModels, {

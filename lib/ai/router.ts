@@ -16,7 +16,7 @@ import {
   getDzdMaxTokens,
   getDzdToken,
 } from "./dzd";
-import type { ReasoningConfig, ReasoningLevel } from "./models";
+import type { ChatRouteMode, ReasoningConfig, ReasoningLevel } from "./models";
 import {
   createNvidiaModel,
   getNvidiaModels,
@@ -30,8 +30,7 @@ import { createOpenCodeModel, isOpenCodeEnabled } from "./opencode";
 import { createZaiModel, hasZaiKey, ZAI_GLM_FLASH } from "./zai";
 
 /**
- * TheStudent AI is one assistant to the student; which model writes a reply
- * is decided here, on the server, request by request:
+ * TheStudent AI Auto automatically routes a reply on the server:
  *
  *   1. NVIDIA Nemotron 3 Ultra (the default)
  *   2. NVIDIA gpt-oss-20b
@@ -40,12 +39,15 @@ import { createZaiModel, hasZaiKey, ZAI_GLM_FLASH } from "./zai";
  *   5. The private OpenCode tutor Space
  *   6. TheStudent's own DZD model on Hugging Face (the final fallback)
  *
- * A model counts as busy when it is rate limited, errors, refuses the
- * request, or doesn't start answering in time. Nothing has been sent to the
- * student at that point, so the next model takes over invisibly. The first
- * output of a model is what "commits" the reply to it; after that the reply
- * stays with that model, and later tool steps of the same reply start with
- * it too.
+ * The allowlisted Flash v1 choice tries NVIDIA candidates only; Study v1
+ * tries the private OpenCode tutor route only. Neither manual choice silently
+ * falls back to a different provider. Provider/model IDs stay server-side.
+ *
+ * In Auto mode, a model counts as busy when it is rate limited, errors,
+ * refuses the request, or doesn't start answering in time. Nothing has been
+ * sent to the student at that point, so the next model takes over invisibly.
+ * The first output commits the reply to a model; later tool steps stay with
+ * that model.
  *
  * If every model is busy, the whole list is tried again up to 3 more times,
  * after short waits (about 1.5 s, 4 s and 8 s). Models that just failed are
@@ -197,16 +199,19 @@ export async function buildRoutePlan({
   dzdHooks,
   openCodeSessionKey,
   reasoningLevel,
+  routeMode = "auto",
 }: {
   purpose: RoutePurpose;
   needsVision: boolean;
   dzdHooks?: DzdStreamHooks;
   openCodeSessionKey?: string;
   reasoningLevel?: ReasoningLevel;
+  routeMode?: ChatRouteMode;
 }): Promise<RouteCandidate[]> {
   const plan: RouteCandidate[] = [];
 
-  if (hasNvidiaKey()) {
+  // Flash is a direct NVIDIA route; Auto also includes NVIDIA first.
+  if (routeMode !== "study" && hasNvidiaKey()) {
     const catalog = await nvidiaCatalog();
     // The list only holds models the keys can use. If it couldn't be
     // loaded, the two named models are still tried.
@@ -234,7 +239,7 @@ export async function buildRoutePlan({
     }
   }
 
-  if (hasZaiKey()) {
+  if (routeMode === "auto" && hasZaiKey()) {
     plan.push({
       create: () => createZaiModel(ZAI_GLM_FLASH),
       id: `zai:${ZAI_GLM_FLASH}`,
@@ -245,7 +250,13 @@ export async function buildRoutePlan({
     });
   }
 
-  if (purpose !== "fast" && openCodeSessionKey && isOpenCodeEnabled()) {
+  // Study only tries the private tutor route; Auto also uses it as fallback.
+  if (
+    routeMode !== "flash" &&
+    purpose !== "fast" &&
+    openCodeSessionKey &&
+    isOpenCodeEnabled()
+  ) {
     plan.push({
       create: () =>
         createOpenCodeModel({
@@ -261,7 +272,7 @@ export async function buildRoutePlan({
     });
   }
 
-  if (purpose !== "fast" && getDzdToken()) {
+  if (routeMode === "auto" && purpose !== "fast" && getDzdToken()) {
     plan.push({
       create: () => createDzdModel(dzdHooks),
       id: "dzd:hf-space",
@@ -315,6 +326,14 @@ class EmptyResponseError extends Error {
   constructor() {
     super("The model returned an empty response");
     this.name = "EmptyResponseError";
+  }
+}
+
+/** The selected branded route is unavailable in this deployment. */
+export class SelectedModelUnavailableError extends Error {
+  constructor() {
+    super("The selected route is not configured");
+    this.name = "SelectedModelUnavailableError";
   }
 }
 
@@ -592,6 +611,8 @@ export type RouterEvent =
 
 export type RouterOptions = {
   purpose: RoutePurpose;
+  /** Auto fallback, NVIDIA-only Flash, or OpenCode-only Study routing. */
+  routeMode?: ChatRouteMode;
   /** The student's reasoning choice ("off" = Fast). */
   reasoningLevel?: ReasoningLevel;
   /** Progress callbacks for TheStudent's own model. */
@@ -714,6 +735,7 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
           openCodeSessionKey: options.openCodeSessionKey,
           purpose: options.purpose,
           reasoningLevel: level,
+          routeMode: options.routeMode,
         });
     return planPromise;
   };
@@ -811,6 +833,13 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
     ) => Promise<T>
   ): Promise<T> {
     const plan = await getPlan(promptHasImages(call.prompt));
+    if (
+      plan.length === 0 &&
+      options.routeMode &&
+      options.routeMode !== "auto"
+    ) {
+      throw new SelectedModelUnavailableError();
+    }
     const until = deadline();
     const excluded = new Set<string>();
     let lastError: unknown = new Error("No model is configured");
@@ -1012,6 +1041,9 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
 
 /** A short, student-friendly message when no model could answer. */
 export function routerErrorMessage(error: unknown) {
+  if (error instanceof SelectedModelUnavailableError) {
+    return "This TheStudent AI option isn't available right now. Choose TheStudent AI Auto or try again later.";
+  }
   if (error instanceof AllModelsBusyError) {
     return "TheStudent AI is very busy right now. Please wait a minute and send your message again.";
   }

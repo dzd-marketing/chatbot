@@ -1,8 +1,8 @@
 import { getAllCapabilities } from "@/lib/ai/available-models";
 
 /**
- * The app's only model, TheStudent AI, and what it can do. The models behind
- * it are chosen on the server and are not listed here.
+ * The capabilities of the three branded TheStudent AI choices. Provider and
+ * underlying model identities remain server-side.
  */
 export function GET() {
   return Response.json(

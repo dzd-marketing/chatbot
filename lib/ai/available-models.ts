@@ -2,17 +2,14 @@ import "server-only";
 
 import {
   type ChatModel,
-  dzdLearnModel,
   getCapabilities,
+  getChatModel,
   type ModelCapabilities,
 } from "./models";
 
-/**
- * Students only ever get TheStudent AI; the server routes each reply to a
- * model (lib/ai/router.ts). Model ids from older clients are ignored.
- */
-export function findChatModel(_modelId: string): ChatModel {
-  return dzdLearnModel;
+/** Resolve a validated student-facing model choice without exposing providers. */
+export function findChatModel(modelId: string): ChatModel {
+  return getChatModel(modelId);
 }
 
 export function getAllCapabilities(): Record<string, ModelCapabilities> {

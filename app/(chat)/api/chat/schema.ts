@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { reasoningLevels } from "@/lib/ai/models";
+import {
+  CHAT_MODEL_IDS,
+  DEFAULT_CHAT_MODEL,
+  reasoningLevels,
+} from "@/lib/ai/models";
 import {
   MAX_VOICE_MS,
   MAX_VOICE_WORDS,
@@ -65,7 +69,9 @@ export const postRequestBodySchema = z.object({
   message: userMessageSchema.optional(),
   messages: z.array(toolApprovalMessageSchema).optional(),
   reasoning: z.enum(reasoningLevels).optional(),
-  selectedChatModel: z.string(),
+  // Only the three branded student-facing choices are accepted. Never pass
+  // a client-supplied provider or underlying model id through to the router.
+  selectedChatModel: z.enum(CHAT_MODEL_IDS).default(DEFAULT_CHAT_MODEL),
   selectedVisibilityType: z.enum(["public", "private"]),
   // The Tools menu (lib/ai/tool-groups.ts). Missing tools stay on.
   tools: z

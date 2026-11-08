@@ -18,8 +18,8 @@ export const myProvider = isTestEnvironment
   : null;
 
 /**
- * TheStudent AI. Every request is routed on the server to a model that is
- * free right now (lib/ai/router.ts); `modelId` is kept for older callers.
+ * TheStudent AI. The server applies the allowlisted route selected by the
+ * student (automatic fallback, NVIDIA-only, or OpenCode-only).
  */
 export function getLanguageModel(
   _modelId: string,

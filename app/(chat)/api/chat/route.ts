@@ -17,9 +17,9 @@ import { createResumableStreamContext } from "resumable-stream";
 import { auth } from "@/app/(auth)/auth";
 import type { DzdStreamHooks } from "@/lib/ai/dzd";
 import {
-  DZD_LEARN_MODEL_ID,
-  dzdLearnCapabilities,
-  dzdLearnModel,
+  getChatModel,
+  getChatRouteMode,
+  getModelCapabilities,
   resolveReasoningLevel,
 } from "@/lib/ai/models";
 import {
@@ -144,6 +144,7 @@ export async function POST(request: Request) {
       message,
       messages,
       reasoning,
+      selectedChatModel,
       selectedVisibilityType,
       tools: requestedTools,
       voice,
@@ -163,10 +164,10 @@ export async function POST(request: Request) {
       return new ChatbotError("unauthorized:chat").toResponse();
     }
 
-    // Always TheStudent AI: the model behind each reply is picked on the
-    // server (lib/ai/router.ts). A model id sent by an older client is
-    // ignored.
-    const chatModel = DZD_LEARN_MODEL_ID;
+    // The request schema allowlists these branded choices. The server maps
+    // them to fixed route modes; arbitrary provider/model IDs are rejected.
+    const chatModel = selectedChatModel;
+    const routeMode = getChatRouteMode(selectedChatModel);
 
     // No message limits: students can chat as much as they need.
 
@@ -253,8 +254,8 @@ export async function POST(request: Request) {
       });
     }
 
-    const modelConfig = dzdLearnModel;
-    const supportsTools = dzdLearnCapabilities.tools;
+    const modelConfig = getChatModel(chatModel);
+    const supportsTools = getModelCapabilities(chatModel).tools;
     // The student's Tools menu; older clients only send `webSearch`.
     // A voice conversation can't show quizzes, flashcards or documents.
     const toolSettings = resolveToolSettings({
@@ -488,6 +489,7 @@ export async function POST(request: Request) {
             // Voice: the quick model first, and less waiting on slow ones.
             purpose: voice ? "voice" : "chat",
             reasoningLevel,
+            routeMode,
           }),
           onAbort() {
             stopWaitingStatus();

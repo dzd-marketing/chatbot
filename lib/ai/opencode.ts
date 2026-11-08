@@ -29,8 +29,9 @@ export function hasOpenCodeCredentials() {
   return Boolean(getOpenCodeHfToken() && getOpenCodeBridgeKey());
 }
 
+/** Auto-enable when the two server-side credentials exist; keep an opt-out. */
 export function isOpenCodeEnabled() {
-  return process.env.OPENCODE_ENABLED === "true" && hasOpenCodeCredentials();
+  return process.env.OPENCODE_DISABLED !== "true" && hasOpenCodeCredentials();
 }
 
 function openCodeBaseUrl() {
@@ -316,6 +317,8 @@ export async function resetOpenCodeSessionsForChats(chatIds: string[]) {
     return;
   }
   if (!hasOpenCodeCredentials()) {
+    // Legacy explicit-enable deployments may still have Space sessions; never
+    // silently delete only the website record if their reset keys went missing.
     if (process.env.OPENCODE_ENABLED === "true") {
       throw new Error("OpenCode session credentials are not configured");
     }
