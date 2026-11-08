@@ -733,7 +733,7 @@ function PureMultimodalInput({
       </div>
 
       <PromptInput
-        className="rounded-2xl border border-border/40 bg-card shadow-[var(--shadow-composer)] dark:bg-black [&>div]:rounded-2xl [&>div]:border-0 [&>div]:bg-transparent [&>div]:shadow-none [&>div]:has-[[data-slot=input-group-control]:focus-visible]:border-0 [&>div]:has-[[data-slot=input-group-control]:focus-visible]:ring-0"
+        className="dzd-gradient-border rounded-2xl border border-border/40 bg-card shadow-[var(--shadow-composer)] dark:bg-neutral-950 [&>div]:rounded-2xl [&>div]:border-0 [&>div]:bg-transparent [&>div]:shadow-none [&>div]:has-[[data-slot=input-group-control]:focus-visible]:border-0 [&>div]:has-[[data-slot=input-group-control]:focus-visible]:ring-0"
         onSubmit={handlePromptSubmit}
       >
         {feature && !editingMessage ? (

@@ -690,6 +690,79 @@ textarea:focus-visible {
 }
 
 /*
+ * Animated rainbow ring around the composer. The masked pseudo-element sits
+ * over the form border while leaving the solid input surface untouched.
+ */
+@property --dzd-border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.dzd-gradient-border {
+  --dzd-border-width: 1px;
+  position: relative;
+}
+
+.dzd-gradient-border::before {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: var(--dzd-border-width);
+  pointer-events: none;
+  content: "";
+  background: conic-gradient(
+    from var(--dzd-border-angle),
+    hsl(224 85% 66%),
+    hsl(269 85% 66%),
+    hsl(314 85% 66%),
+    hsl(359 85% 66%),
+    hsl(44 85% 66%),
+    hsl(89 85% 66%),
+    hsl(134 85% 66%),
+    hsl(179 85% 66%),
+    hsl(224 85% 66%)
+  );
+  border-radius: inherit;
+  opacity: 0;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  animation: dzd-border-spin 6s linear infinite;
+}
+
+@keyframes dzd-border-spin {
+  0% {
+    --dzd-border-angle: 0deg;
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  43.333% {
+    opacity: 1;
+  }
+  50% {
+    --dzd-border-angle: 720deg;
+    opacity: 0;
+  }
+  100% {
+    --dzd-border-angle: 720deg;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dzd-gradient-border::before {
+    animation: none;
+  }
+}
+
+/*
  * Welcome screen orb (components/chat/welcome-loader.tsx). Port of the
  * pasted styled-components loader: gooey morphing triangles over an amber
  * gradient, slowly hue-shifting. The wrapper adds the shadows, the glass
