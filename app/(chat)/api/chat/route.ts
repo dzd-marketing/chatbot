@@ -23,6 +23,10 @@ import {
   resolveReasoningLevel,
 } from "@/lib/ai/models";
 import {
+  openCodeSessionKey as makeOpenCodeSessionKey,
+  resetOpenCodeSessionsForChats,
+} from "@/lib/ai/opencode";
+import {
   type RequestHints,
   systemPrompt,
   voiceSystemPrompt,
@@ -415,6 +419,28 @@ export async function POST(request: Request) {
             supportsTools: false,
             webSearch: toolSettings.webSearch,
           });
+        // The private OpenCode Space uses a hardened no-tools tutor agent.
+        // Don't let this fallback claim it can use tools from the website.
+        const openCodeInstructions = voice
+          ? voiceSystemPrompt({
+              builtInWebSearch: false,
+              calculator: false,
+              interruptedAfter,
+              language: voice.language,
+              requestHints,
+              supportsTools: false,
+              webSearch: false,
+            })
+          : systemPrompt({
+              builtInWebSearch: false,
+              calculator: false,
+              documents: false,
+              pageReading: false,
+              requestHints,
+              study: false,
+              supportsTools: false,
+              webSearch: false,
+            });
 
         const result = streamText({
           // Models without tool support get no tools at all (llama.cpp, for
@@ -454,6 +480,8 @@ export async function POST(request: Request) {
                   : "Still working on it..."
               );
             },
+            openCodeInstructions,
+            openCodeSessionKey: makeOpenCodeSessionKey(id),
             // Voice: the quick model first, and less waiting on slow ones.
             purpose: voice ? "voice" : "chat",
             reasoningLevel,
@@ -721,6 +749,14 @@ export async function DELETE(request: Request) {
 
   if (chat?.userId !== session.user.id) {
     return new ChatbotError("forbidden:chat").toResponse();
+  }
+
+  try {
+    await resetOpenCodeSessionsForChats([id]);
+  } catch {
+    // Don't report a successful deletion while the private Space still has
+    // a session mapped to this chat.
+    return new ChatbotError("offline:history").toResponse();
   }
 
   const deletedChat = await deleteChatById({ id });

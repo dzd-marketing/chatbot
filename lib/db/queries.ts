@@ -125,26 +125,48 @@ export async function deleteChatById({ id }: { id: string }) {
   }
 }
 
-export async function deleteAllChatsByUserId({ userId }: { userId: string }) {
+export async function getChatIdsByUserId({ userId }: { userId: string }) {
   try {
     const userChats = await db
       .select({ id: chat.id })
       .from(chat)
       .where(eq(chat.userId, userId));
+    return userChats.map(({ id }) => id);
+  } catch (error) {
+    throw new ChatbotError("bad_request:database", { cause: error });
+  }
+}
+
+export async function deleteAllChatsByUserId({
+  userId,
+  chatIds,
+}: {
+  userId: string;
+  chatIds: string[];
+}) {
+  try {
+    if (chatIds.length === 0) {
+      return { deletedCount: 0 };
+    }
+
+    const userChats = await db
+      .select({ id: chat.id })
+      .from(chat)
+      .where(and(eq(chat.userId, userId), inArray(chat.id, chatIds)));
 
     if (userChats.length === 0) {
       return { deletedCount: 0 };
     }
 
-    const chatIds = userChats.map((c) => c.id);
+    const ownedChatIds = userChats.map((c) => c.id);
 
-    await db.delete(vote).where(inArray(vote.chatId, chatIds));
-    await db.delete(message).where(inArray(message.chatId, chatIds));
-    await db.delete(stream).where(inArray(stream.chatId, chatIds));
+    await db.delete(vote).where(inArray(vote.chatId, ownedChatIds));
+    await db.delete(message).where(inArray(message.chatId, ownedChatIds));
+    await db.delete(stream).where(inArray(stream.chatId, ownedChatIds));
 
     const deletedChats = await db
       .delete(chat)
-      .where(eq(chat.userId, userId))
+      .where(and(eq(chat.userId, userId), inArray(chat.id, ownedChatIds)))
       .returning();
 
     return { deletedCount: deletedChats.length };

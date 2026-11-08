@@ -106,6 +106,8 @@ export function getMessageByErrorCode(errorCode: ErrorCode): string {
       return "You need to sign in to view this chat. Please sign in and try again.";
     case "offline:chat":
       return "We're having trouble sending your message. Please check your internet connection and try again.";
+    case "offline:history":
+      return "We couldn't verify that the linked assistant session was deleted. Your saved chat was kept; please try again later.";
 
     case "not_found:document":
       return "The requested document was not found. Please check the document ID and try again.";

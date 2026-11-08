@@ -1,13 +1,17 @@
 import type { NextRequest } from "next/server";
 import { auth } from "@/app/(auth)/auth";
+import { resetOpenCodeSessionsForChats } from "@/lib/ai/opencode";
 import { fallbackTitleFromText, titleTextFromParts } from "@/lib/chat/title";
 import {
   deleteAllChatsByUserId,
+  getChatIdsByUserId,
   getChatsByUserId,
   getFirstUserMessagesByChatIds,
   updateChatTitleById,
 } from "@/lib/db/queries";
 import { ChatbotError } from "@/lib/errors";
+
+export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -79,7 +83,19 @@ export async function DELETE() {
     return new ChatbotError("unauthorized:chat").toResponse();
   }
 
-  const result = await deleteAllChatsByUserId({ userId: session.user.id });
+  const chatIds = await getChatIdsByUserId({ userId: session.user.id });
+  try {
+    await resetOpenCodeSessionsForChats(chatIds);
+  } catch {
+    // Keep the website-side history until every mapped Space session has
+    // confirmed deletion; the user can retry if the Space is unavailable.
+    return new ChatbotError("offline:history").toResponse();
+  }
+
+  const result = await deleteAllChatsByUserId({
+    chatIds,
+    userId: session.user.id,
+  });
 
   return Response.json(result, { status: 200 });
 }

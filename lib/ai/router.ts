@@ -26,6 +26,7 @@ import {
   nvidiaReasoningConfig,
   nvidiaReasoningOptions,
 } from "./nvidia";
+import { createOpenCodeModel, isOpenCodeEnabled } from "./opencode";
 import { createZaiModel, hasZaiKey, ZAI_GLM_FLASH } from "./zai";
 
 /**
@@ -36,7 +37,8 @@ import { createZaiModel, hasZaiKey, ZAI_GLM_FLASH } from "./zai";
  *   2. NVIDIA gpt-oss-20b
  *   3. other free NVIDIA chat models that aren't busy (best first)
  *   4. Z.AI GLM-4.7-Flash
- *   5. TheStudent's own model on Hugging Face (always the last resort)
+ *   5. The private OpenCode tutor Space
+ *   6. TheStudent's own DZD model on Hugging Face (the final fallback)
  *
  * A model counts as busy when it is rate limited, errors, refuses the
  * request, or doesn't start answering in time. Nothing has been sent to the
@@ -89,10 +91,12 @@ const DZD_MAX_TEXT_CHARS = 12_000;
 export type RouteCandidate = {
   /** Internal id, for logs only (never sent to the browser). */
   id: string;
-  kind: "nvidia" | "zai" | "dzd";
-  tier: "primary" | "secondary" | "extra" | "zai" | "dzd";
+  kind: "nvidia" | "zai" | "opencode" | "dzd";
+  tier: "primary" | "secondary" | "extra" | "zai" | "opencode" | "dzd";
   vision: boolean;
   reasoning?: ReasoningConfig;
+  /** Cold private Spaces can take longer to start answering. */
+  firstOutputMs?: number;
   create: () => LanguageModelV4;
 };
 
@@ -181,7 +185,7 @@ export type RoutePurpose = "chat" | "fast" | "voice";
 
 /**
  * The models to try, in order. `fast` is for short helper calls (chat
- * titles, follow-up suggestions): the quick model first and no CPU model.
+ * titles, follow-up suggestions): the quick model first and no Space fallback.
  * `voice` (voice conversations) also puts the quick model first, but keeps
  * every fallback.
  * With images, models that can see them go first; the others get a note
@@ -191,10 +195,14 @@ export async function buildRoutePlan({
   purpose,
   needsVision,
   dzdHooks,
+  openCodeSessionKey,
+  reasoningLevel,
 }: {
   purpose: RoutePurpose;
   needsVision: boolean;
   dzdHooks?: DzdStreamHooks;
+  openCodeSessionKey?: string;
+  reasoningLevel?: ReasoningLevel;
 }): Promise<RouteCandidate[]> {
   const plan: RouteCandidate[] = [];
 
@@ -233,6 +241,22 @@ export async function buildRoutePlan({
       kind: "zai",
       reasoning: { control: "toggle", defaultLevel: "high" },
       tier: "zai",
+      vision: false,
+    });
+  }
+
+  if (purpose !== "fast" && openCodeSessionKey && isOpenCodeEnabled()) {
+    plan.push({
+      create: () =>
+        createOpenCodeModel({
+          reasoningLevel: reasoningLevel ?? "off",
+          sessionKey: openCodeSessionKey,
+        }),
+      firstOutputMs: purpose === "voice" ? 30_000 : 75_000,
+      id: "opencode:hf-space",
+      kind: "opencode",
+      reasoning: { control: "effort", defaultLevel: "low" },
+      tier: "opencode",
       vision: false,
     });
   }
@@ -512,6 +536,59 @@ function forDzd(
   };
 }
 
+const OPENCODE_HISTORY_MESSAGES = 20;
+const OPENCODE_MAX_TEXT_CHARS = 20_000;
+
+function capOpenCodeText(text: string) {
+  return text.length > OPENCODE_MAX_TEXT_CHARS
+    ? `${text.slice(0, OPENCODE_MAX_TEXT_CHARS)}\n\n[...shortened]`
+    : text;
+}
+
+/** OpenCode is a no-tools text fallback; don't send tool calls or file parts. */
+function forOpenCode(
+  options: LanguageModelV4CallOptions,
+  instructions: string | undefined
+): LanguageModelV4CallOptions {
+  const system =
+    instructions ??
+    options.prompt
+      .filter((message) => message.role === "system")
+      .map((message) => message.content)
+      .join("\n\n");
+  const turns: LanguageModelV4Message[] = [];
+
+  for (const message of options.prompt) {
+    if (message.role === "user") {
+      const content = message.content
+        .filter((part) => part.type === "text")
+        .map((part) => ({ ...part, text: capOpenCodeText(part.text) }));
+      if (content.length > 0) {
+        turns.push({ content, role: "user" });
+      }
+    } else if (message.role === "assistant") {
+      const content = message.content
+        .filter((part) => part.type === "text" && part.text.trim())
+        .map((part) => part);
+      if (content.length > 0) {
+        turns.push({ content, role: "assistant" });
+      }
+    }
+  }
+
+  let recent = turns.slice(-OPENCODE_HISTORY_MESSAGES);
+  const firstUser = recent.findIndex((message) => message.role === "user");
+  recent = firstUser > 0 ? recent.slice(firstUser) : recent;
+
+  return {
+    ...options,
+    prompt: system ? [{ content: system, role: "system" }, ...recent] : recent,
+    providerOptions: {},
+    toolChoice: undefined,
+    tools: undefined,
+  };
+}
+
 /* -------------------------------------------------------------------------- */
 /*                                 The router                                 */
 /* -------------------------------------------------------------------------- */
@@ -528,6 +605,9 @@ export type RouterOptions = {
   dzdHooks?: DzdStreamHooks;
   /** Instructions for TheStudent's own model (it has its own web search). */
   dzdInstructions?: string;
+  /** Chat-keyed OpenCode session and its no-tools tutoring instructions. */
+  openCodeSessionKey?: string;
+  openCodeInstructions?: string;
   /** Time (ms since epoch) by which a reply must have started. */
   deadline?: number;
   /** Status for the waiting indicator (never names a model). */
@@ -638,7 +718,9 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
       : buildRoutePlan({
           dzdHooks: options.dzdHooks,
           needsVision,
+          openCodeSessionKey: options.openCodeSessionKey,
           purpose: options.purpose,
+          reasoningLevel: level,
         });
     return planPromise;
   };
@@ -667,6 +749,8 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
     };
     if (candidate.kind === "dzd") {
       params = forDzd(params, options.dzdInstructions);
+    } else if (candidate.kind === "opencode") {
+      params = forOpenCode(params, options.openCodeInstructions);
     }
     if (
       candidate.reasoning?.control === "effort" &&
@@ -765,15 +849,18 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
         if (attempts > 0 && left < MIN_ATTEMPT_MS) {
           break;
         }
+        const defaultFirstOutputMs = (options.firstOutputMs ??
+          (options.purpose === "voice"
+            ? VOICE_FIRST_OUTPUT_MS
+            : FIRST_OUTPUT_MS))[
+          candidate.tier === "primary" ? "primary" : "standard"
+        ];
         const firstOutputMs =
           candidate.tier === "dzd"
             ? Math.max(left, MIN_ATTEMPT_MS)
-            : (options.firstOutputMs ??
-                (options.purpose === "voice"
-                  ? VOICE_FIRST_OUTPUT_MS
-                  : FIRST_OUTPUT_MS))[
-                candidate.tier === "primary" ? "primary" : "standard"
-              ];
+            : !options.firstOutputMs && candidate.firstOutputMs
+              ? candidate.firstOutputMs
+              : defaultFirstOutputMs;
         const timeoutMs = options.firstOutputMs
           ? firstOutputMs
           : Math.max(Math.min(firstOutputMs, left), MIN_ATTEMPT_MS);
@@ -800,7 +887,9 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
           const failure = classifyFailure(error);
           remember(candidate, failure);
           logFailure(candidate, failure, error);
-          if (failure.kind !== "busy") {
+          // The OpenCode bridge already performs its own model fallbacks; a
+          // second slow Space attempt would starve the final DZD fallback.
+          if (failure.kind !== "busy" || candidate.kind === "opencode") {
             excluded.add(candidate.id);
           }
           if (failure.retryAfterMs) {
