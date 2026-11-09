@@ -1,7 +1,7 @@
 /**
  * Student-facing choices are TheStudent AI modes, not provider or model IDs.
  * The server maps these allowlisted IDs to automatic, NVIDIA-only, or
- * OpenCode-only routing in lib/ai/router.ts.
+ * GPT-OSS-only Study routing in lib/ai/router.ts.
  */
 export const DZD_LEARN_MODEL_ID = "dzd-learn/auto";
 export const DZD_FLASH_MODEL_ID = "dzd-learn/flash-v1";

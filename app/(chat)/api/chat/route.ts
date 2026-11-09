@@ -23,10 +23,6 @@ import {
   resolveReasoningLevel,
 } from "@/lib/ai/models";
 import {
-  openCodeSessionKey as makeOpenCodeSessionKey,
-  resetOpenCodeSessionsForChats,
-} from "@/lib/ai/opencode";
-import {
   type RequestHints,
   systemPrompt,
   voiceSystemPrompt,
@@ -79,9 +75,6 @@ export const maxDuration = 300;
 const ROUTING_DEADLINE_MS = 285_000;
 
 const HEALTH_CHECK_DELAY_MS = 9000;
-
-const OPEN_CODE_TOOL_AVAILABILITY_PROMPT = `## Website tool availability
-Only call website tools listed in this request's tool definitions. The set can change between turns as the student changes the Tools menu. If a needed tool is not listed, don't claim or attempt to use it; help with what is available instead.`;
 
 function isModelStreamActivity(chunk: { type: string }) {
   return !["start", "start-step", "finish-step", "finish", "raw"].includes(
@@ -437,30 +430,6 @@ export async function POST(request: Request) {
             supportsTools: false,
             webSearch: toolSettings.webSearch,
           });
-        // OpenCode sessions keep their first system prompt. Keep its tool
-        // policy stable across menu changes; the active tool schemas sent with
-        // each call are authoritative, and execution stays on this server.
-        const openCodeBaseInstructions = voice
-          ? voiceSystemPrompt({
-              builtInWebSearch: false,
-              calculator: true,
-              interruptedAfter,
-              language: voice.language,
-              requestHints,
-              supportsTools: true,
-              webSearch: true,
-            })
-          : systemPrompt({
-              builtInWebSearch: false,
-              calculator: true,
-              documents: true,
-              pageReading: true,
-              requestHints,
-              study: true,
-              supportsTools: true,
-              webSearch: true,
-            });
-        const openCodeInstructions = `${openCodeBaseInstructions}\n\n${OPEN_CODE_TOOL_AVAILABILITY_PROMPT}`;
 
         const result = streamText({
           // Models without tool support get no tools at all (llama.cpp, for
@@ -500,11 +469,6 @@ export async function POST(request: Request) {
                   : "Still working on it..."
               );
             },
-            openCodeInstructions,
-            openCodeSessionKey: makeOpenCodeSessionKey(
-              id,
-              voice ? "voice" : "chat"
-            ),
             // Voice: the quick model first, and less waiting on slow ones.
             purpose: voice ? "voice" : "chat",
             reasoningLevel,
@@ -745,14 +709,6 @@ export async function DELETE(request: Request) {
 
   if (chat?.userId !== session.user.id) {
     return new ChatbotError("forbidden:chat").toResponse();
-  }
-
-  try {
-    await resetOpenCodeSessionsForChats([id]);
-  } catch {
-    // Don't report a successful deletion while the private Space still has
-    // a session mapped to this chat.
-    return new ChatbotError("offline:history").toResponse();
   }
 
   const deletedChat = await deleteChatById({ id });

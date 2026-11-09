@@ -1,6 +1,5 @@
 import type { NextRequest } from "next/server";
 import { auth } from "@/app/(auth)/auth";
-import { resetOpenCodeSessionsForChats } from "@/lib/ai/opencode";
 import { fallbackTitleFromText, titleTextFromParts } from "@/lib/chat/title";
 import {
   deleteAllChatsByUserId,
@@ -84,14 +83,6 @@ export async function DELETE() {
   }
 
   const chatIds = await getChatIdsByUserId({ userId: session.user.id });
-  try {
-    await resetOpenCodeSessionsForChats(chatIds);
-  } catch {
-    // Keep the website-side history until every mapped Space session has
-    // confirmed deletion; the user can retry if the Space is unavailable.
-    return new ChatbotError("offline:history").toResponse();
-  }
-
   const result = await deleteAllChatsByUserId({
     chatIds,
     userId: session.user.id,

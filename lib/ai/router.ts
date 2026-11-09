@@ -16,6 +16,7 @@ import {
   getDzdMaxTokens,
   getDzdToken,
 } from "./dzd";
+import { createGptOssModel, isGptOssEnabled } from "./gpt-oss";
 import type { ChatRouteMode, ReasoningConfig, ReasoningLevel } from "./models";
 import {
   createNvidiaModel,
@@ -26,7 +27,6 @@ import {
   nvidiaReasoningConfig,
   nvidiaReasoningOptions,
 } from "./nvidia";
-import { createOpenCodeModel, isOpenCodeEnabled } from "./opencode";
 import { createZaiModel, hasZaiKey, ZAI_GLM_FLASH } from "./zai";
 
 /**
@@ -36,11 +36,11 @@ import { createZaiModel, hasZaiKey, ZAI_GLM_FLASH } from "./zai";
  *   2. NVIDIA gpt-oss-20b
  *   3. other free NVIDIA chat models that aren't busy (best first)
  *   4. Z.AI GLM-4.7-Flash
- *   5. The private OpenCode tutor Space
+ *   5. The private GPT-OSS tutor Space
  *   6. TheStudent's own DZD model on Hugging Face (the final fallback)
  *
  * The allowlisted Flash v1 choice tries NVIDIA candidates only; Study v1
- * tries the private OpenCode tutor route only. Neither manual choice silently
+ * tries the private GPT-OSS tutor route only. Neither manual choice silently
  * falls back to a different provider. Provider/model IDs stay server-side.
  *
  * In Auto mode, a model counts as busy when it is rate limited, errors,
@@ -93,8 +93,8 @@ const DZD_MAX_TEXT_CHARS = 12_000;
 export type RouteCandidate = {
   /** Internal id, for logs only (never sent to the browser). */
   id: string;
-  kind: "nvidia" | "zai" | "opencode" | "dzd";
-  tier: "primary" | "secondary" | "extra" | "zai" | "opencode" | "dzd";
+  kind: "nvidia" | "zai" | "gpt-oss" | "dzd";
+  tier: "primary" | "secondary" | "extra" | "zai" | "gpt-oss" | "dzd";
   vision: boolean;
   reasoning?: ReasoningConfig;
   /** Cold private Spaces can take longer to start answering. */
@@ -197,14 +197,12 @@ export async function buildRoutePlan({
   purpose,
   needsVision,
   dzdHooks,
-  openCodeSessionKey,
   reasoningLevel,
   routeMode = "auto",
 }: {
   purpose: RoutePurpose;
   needsVision: boolean;
   dzdHooks?: DzdStreamHooks;
-  openCodeSessionKey?: string;
   reasoningLevel?: ReasoningLevel;
   routeMode?: ChatRouteMode;
 }): Promise<RouteCandidate[]> {
@@ -250,24 +248,18 @@ export async function buildRoutePlan({
     });
   }
 
-  // Study only tries the private tutor route; Auto also uses it as fallback.
-  if (
-    routeMode !== "flash" &&
-    purpose !== "fast" &&
-    openCodeSessionKey &&
-    isOpenCodeEnabled()
-  ) {
+  // Study uses the stateless GPT-OSS tutor Space; Auto keeps it as a
+  // fallback after NVIDIA and Z.AI. The Space has no native tool runner.
+  if (routeMode !== "flash" && purpose !== "fast" && isGptOssEnabled()) {
+    const level = reasoningLevel ?? "low";
     plan.push({
-      create: () =>
-        createOpenCodeModel({
-          reasoningLevel: reasoningLevel ?? "off",
-          sessionKey: openCodeSessionKey,
-        }),
-      firstOutputMs: purpose === "voice" ? 30_000 : 75_000,
-      id: "opencode:hf-space",
-      kind: "opencode",
+      create: () => createGptOssModel(level),
+      // The private Space can take about 22 seconds to cold-start.
+      firstOutputMs: purpose === "voice" ? 35_000 : 75_000,
+      id: "gpt-oss:hf-space",
+      kind: "gpt-oss",
       reasoning: { control: "effort", defaultLevel: "low" },
-      tier: "opencode",
+      tier: "gpt-oss",
       vision: false,
     });
   }
@@ -323,8 +315,10 @@ export class FirstOutputTimeoutError extends Error {
 }
 
 class EmptyResponseError extends Error {
-  constructor() {
+  readonly finishReason?: string;
+  constructor(finishReason?: string) {
     super("The model returned an empty response");
+    this.finishReason = finishReason;
     this.name = "EmptyResponseError";
   }
 }
@@ -555,53 +549,102 @@ function forDzd(
   };
 }
 
-/**
- * OpenCode can request the website's allowlisted custom tools. Send the full
- * transcript, including prior calls and results: the bridge de-duplicates it
- * for a live session and needs it to recover after a reset.
- */
-function forOpenCode(
-  options: LanguageModelV4CallOptions,
-  instructions: string | undefined
-): LanguageModelV4CallOptions {
-  const system =
-    instructions ??
-    options.prompt
-      .filter((message) => message.role === "system")
-      .map((message) => message.content)
-      .join("\n\n");
-  const turns: LanguageModelV4Message[] = [];
+const APP_TOOL_NAMES = new Set([
+  "calculate",
+  "createDocument",
+  "createFlashcards",
+  "createQuiz",
+  "editDocument",
+  "getWeather",
+  "readDocument",
+  "requestSuggestions",
+  "shareFiles",
+  "updateDocument",
+  "webFetch",
+  "webSearch",
+]);
 
+/**
+ * The GPT-OSS Space is stateless and has no tool executor. Send the normal
+ * bounded conversation, and keep only TheStudent's app-executed tool calls
+ * and results. Reasoning and provider-native tools are never sent back.
+ */
+function forGptOss(
+  options: LanguageModelV4CallOptions,
+  retryAfterLength = false
+): LanguageModelV4CallOptions {
+  const validToolCallIds = new Set<string>();
   for (const message of options.prompt) {
-    if (message.role === "user") {
+    if (message.role !== "assistant") {
+      continue;
+    }
+    for (const part of message.content) {
+      if (
+        part.type === "tool-call" &&
+        !part.providerExecuted &&
+        APP_TOOL_NAMES.has(part.toolName)
+      ) {
+        validToolCallIds.add(part.toolCallId);
+      }
+    }
+  }
+
+  const prompt: LanguageModelV4Prompt = [];
+  for (const message of options.prompt) {
+    if (message.role === "system") {
+      prompt.push(message);
+    } else if (message.role === "user") {
       const content = message.content.filter((part) => part.type === "text");
       if (content.length > 0) {
-        turns.push({ content, role: "user" });
+        prompt.push({ ...message, content });
       }
     } else if (message.role === "assistant") {
       const content = message.content.filter(
         (part) =>
           (part.type === "text" && part.text.trim()) ||
-          part.type === "tool-call" ||
-          part.type === "tool-result"
+          (part.type === "tool-call" &&
+            !part.providerExecuted &&
+            APP_TOOL_NAMES.has(part.toolName))
       );
       if (content.length > 0) {
-        turns.push({ content, role: "assistant" });
+        prompt.push({ ...message, content });
       }
     } else if (message.role === "tool") {
-      turns.push(message);
+      const content = message.content.filter(
+        (part) =>
+          part.type === "tool-result" &&
+          validToolCallIds.has(part.toolCallId) &&
+          APP_TOOL_NAMES.has(part.toolName)
+      );
+      if (content.length > 0) {
+        prompt.push({ ...message, content });
+      }
     }
   }
 
-  const firstUser = turns.findIndex((message) => message.role === "user");
-  const history = firstUser > 0 ? turns.slice(firstUser) : turns;
+  const systemMessages = prompt.filter((message) => message.role === "system");
+  const turns = prompt.filter((message) => message.role !== "system");
+  const latestUserIndex = turns.findLastIndex(
+    (message) => message.role === "user"
+  );
+  const recent =
+    retryAfterLength && latestUserIndex >= 0
+      ? turns.slice(latestUserIndex)
+      : retryAfterLength
+        ? turns.slice(-6)
+        : turns;
+  const maxOutputTokens = retryAfterLength
+    ? 1536
+    : Math.max(512, options.maxOutputTokens ?? 1024);
 
   return {
     ...options,
-    prompt: system
-      ? [{ content: system, role: "system" }, ...history]
-      : history,
+    maxOutputTokens,
+    prompt: [...systemMessages, ...recent],
     providerOptions: {},
+    tools: options.tools?.filter(
+      (tool) => tool.type === "function" && APP_TOOL_NAMES.has(tool.name)
+    ),
   };
 }
 
@@ -615,7 +658,7 @@ export type RouterEvent =
 
 export type RouterOptions = {
   purpose: RoutePurpose;
-  /** Auto fallback, NVIDIA-only Flash, or OpenCode-only Study routing. */
+  /** Auto fallback, NVIDIA-only Flash, or GPT-OSS-only Study routing. */
   routeMode?: ChatRouteMode;
   /** The student's reasoning choice ("off" = Fast). */
   reasoningLevel?: ReasoningLevel;
@@ -623,9 +666,6 @@ export type RouterOptions = {
   dzdHooks?: DzdStreamHooks;
   /** Instructions for TheStudent's own model (it has its own web search). */
   dzdInstructions?: string;
-  /** Chat-keyed OpenCode session and its website-tool-aware instructions. */
-  openCodeSessionKey?: string;
-  openCodeInstructions?: string;
   /** Time (ms since epoch) by which a reply must have started. */
   deadline?: number;
   /** Status for the waiting indicator (never names a model). */
@@ -736,7 +776,6 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
       : buildRoutePlan({
           dzdHooks: options.dzdHooks,
           needsVision,
-          openCodeSessionKey: options.openCodeSessionKey,
           purpose: options.purpose,
           reasoningLevel: level,
           routeMode: options.routeMode,
@@ -751,7 +790,8 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
   const adapt = (
     candidate: RouteCandidate,
     call: LanguageModelV4CallOptions,
-    signal: AbortSignal
+    signal: AbortSignal,
+    retryAfterEmptyLength = false
   ): LanguageModelV4CallOptions => {
     const { nvidia: _n, zai: _z, ...otherOptions } = call.providerOptions ?? {};
     let params: LanguageModelV4CallOptions = {
@@ -768,8 +808,8 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
     };
     if (candidate.kind === "dzd") {
       params = forDzd(params, options.dzdInstructions);
-    } else if (candidate.kind === "opencode") {
-      params = forOpenCode(params, options.openCodeInstructions);
+    } else if (candidate.kind === "gpt-oss") {
+      params = forGptOss(params, retryAfterEmptyLength);
     }
     if (
       candidate.reasoning?.control === "effort" &&
@@ -846,6 +886,7 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
     }
     const until = deadline();
     const excluded = new Set<string>();
+    const gptOssLengthRetried = new Set<string>();
     let lastError: unknown = new Error("No model is configured");
     let attempts = 0;
     let retryAfter = 0;
@@ -895,7 +936,13 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
           // biome-ignore lint/performance/noAwaitInLoops: models are tried one at a time, in order
           const result = await attempt(
             candidate,
-            (signal) => adapt(candidate, call, signal),
+            (signal) =>
+              adapt(
+                candidate,
+                call,
+                signal,
+                gptOssLengthRetried.has(candidate.id)
+              ),
             timeoutMs
           );
           busyUntil.delete(candidate.id);
@@ -913,9 +960,18 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
           const failure = classifyFailure(error);
           remember(candidate, failure);
           logFailure(candidate, failure, error);
-          // The OpenCode bridge already performs its own model fallbacks; a
-          // second slow Space attempt would starve the final DZD fallback.
-          if (failure.kind !== "busy" || candidate.kind === "opencode") {
+          const emptyLength =
+            candidate.kind === "gpt-oss" &&
+            error instanceof EmptyResponseError &&
+            error.finishReason === "length";
+          if (emptyLength && !gptOssLengthRetried.has(candidate.id)) {
+            // GPT-OSS may spend its first output budget on private reasoning.
+            // Retry once with fewer old messages and a larger answer budget.
+            gptOssLengthRetried.add(candidate.id);
+          } else if (
+            failure.kind !== "busy" ||
+            (emptyLength && gptOssLengthRetried.has(candidate.id))
+          ) {
             excluded.add(candidate.id);
           }
           if (failure.retryAfterMs) {
@@ -969,7 +1025,7 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
         withTimeout(call, timeoutMs * 2, async (signal) => {
           const result = await candidate.create().doGenerate(params(signal));
           if (!hasGeneratedContent(result)) {
-            throw new EmptyResponseError();
+            throw new EmptyResponseError(result.finishReason.unified);
           }
           return result;
         })
@@ -996,7 +1052,7 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
                   throw value.error;
                 }
                 if (value.type === "finish") {
-                  throw new EmptyResponseError();
+                  throw new EmptyResponseError(value.finishReason.unified);
                 }
                 buffered.push(value);
                 if (isOutput(value)) {
