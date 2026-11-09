@@ -27,7 +27,6 @@ import { useAutoResume } from "@/hooks/use-auto-resume";
 import {
   DEFAULT_CHAT_MODEL,
   getChatModel,
-  isChatModelId,
   type ReasoningLevel,
   reasoningLevels,
   resolveReasoningLevel,
@@ -59,7 +58,6 @@ type ActiveChatContextValue = {
   isLoading: boolean;
   votes: Vote[] | undefined;
   currentModelId: string;
-  setCurrentModelId: (modelId: string) => void;
   showCreditCardAlert: boolean;
   setShowCreditCardAlert: Dispatch<SetStateAction<boolean>>;
   /** Student's Web search toggle. On by default. */
@@ -95,28 +93,8 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
   const chatId = chatIdFromUrl ?? newChatIdRef.current;
 
-  // The chosen branded route is remembered across chats on this device.
-  const [storedModelId, setStoredModelId] = useLocalStorage<string>(
-    "dzd-chat-model",
-    DEFAULT_CHAT_MODEL,
-    { initializeWithValue: false }
-  );
-  const currentModelId = isChatModelId(storedModelId)
-    ? storedModelId
-    : DEFAULT_CHAT_MODEL;
-  const currentModelIdRef = useRef(currentModelId);
-  useEffect(() => {
-    currentModelIdRef.current = currentModelId;
-  }, [currentModelId]);
-  const setCurrentModelId = useCallback(
-    (modelId: string) => {
-      if (isChatModelId(modelId)) {
-        currentModelIdRef.current = modelId;
-        setStoredModelId(modelId);
-      }
-    },
-    [setStoredModelId]
-  );
+  // Every chat uses the branded automatic route; no client model selection.
+  const currentModelId = DEFAULT_CHAT_MODEL;
 
   const [input, setInput] = useState("");
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
@@ -348,7 +326,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
               ? { messages: request.messages }
               : { message: lastMessage }),
             ...request.body,
-            selectedChatModel: currentModelIdRef.current,
+            selectedChatModel: DEFAULT_CHAT_MODEL,
             selectedVisibilityType: visibility,
             tools: toolSettingsRef.current,
             webSearch: toolSettingsRef.current.webSearch,
@@ -441,7 +419,6 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       reasoningLevel,
       regenerate,
       sendMessage,
-      setCurrentModelId,
       setInput,
       setMessages,
       setReasoningLevel,
@@ -456,11 +433,9 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     }),
     [
       chatId,
-      currentModelId,
       messages,
       setMessages,
       sendMessage,
-      setCurrentModelId,
       status,
       stop,
       regenerate,

@@ -19,7 +19,6 @@ import { Calculation } from "./calculation";
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
 import { DocumentPreview } from "./document-preview";
-import { DzdActivity } from "./dzd-activity";
 import { FileCards, FileCardsSkeleton } from "./file-cards";
 import { Flashcards, FlashcardsSkeleton } from "./flashcards";
 import { FollowUpSuggestions } from "./follow-up-suggestions";
@@ -147,7 +146,6 @@ const PurePreviewMessage = ({
         "text" in part &&
         part.text?.trim().length > 0) ||
       part.type.startsWith("tool-") ||
-      part.type === "data-dzd-activity" ||
       part.type === "data-stopped" ||
       part.type === "data-voice"
   );
@@ -207,16 +205,6 @@ const PurePreviewMessage = ({
       .slice(lastResearchIndex + 1)
       .some((part) => part.type === "text" && part.text.trim().length > 0);
 
-  // TheStudent AI's own web research (progress from its server).
-  const dzdActivityIndex =
-    message.parts?.findLastIndex((part) => part.type === "data-dzd-activity") ??
-    -1;
-  const dzdAnswerStarted =
-    dzdActivityIndex !== -1 &&
-    message.parts
-      .slice(dzdActivityIndex + 1)
-      .some((part) => part.type === "text" && part.text.trim().length > 0);
-
   // One document per reply: older replies may contain duplicate
   // createDocument calls, so only the first working one is shown.
   const shownDocumentCallId = message.parts?.find(
@@ -237,17 +225,6 @@ const PurePreviewMessage = ({
           isLoading={isLoading}
           key={key}
           parts={researchParts}
-        />
-      ) : null;
-    }
-
-    if (type === "data-dzd-activity") {
-      return index === dzdActivityIndex ? (
-        <DzdActivity
-          answerStarted={dzdAnswerStarted}
-          data={part.data}
-          isLoading={isLoading}
-          key={key}
         />
       ) : null;
     }

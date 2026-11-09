@@ -2,22 +2,14 @@ import type {
   LanguageModelV4,
   LanguageModelV4CallOptions,
   LanguageModelV4GenerateResult,
-  LanguageModelV4Message,
   LanguageModelV4Prompt,
   LanguageModelV4StreamPart,
   LanguageModelV4StreamResult,
   SharedV4ProviderOptions,
 } from "@ai-sdk/provider";
 import { APICallError, RetryError } from "ai";
-import {
-  createDzdModel,
-  DZD_HISTORY_MESSAGES,
-  type DzdStreamHooks,
-  getDzdMaxTokens,
-  getDzdToken,
-} from "./dzd";
 import { createGptOssModel, isGptOssEnabled } from "./gpt-oss";
-import type { ChatRouteMode, ReasoningConfig, ReasoningLevel } from "./models";
+import type { ReasoningConfig, ReasoningLevel } from "./models";
 import {
   createNvidiaModel,
   getNvidiaModels,
@@ -30,24 +22,18 @@ import {
 import { createZaiModel, hasZaiKey, ZAI_GLM_FLASH } from "./zai";
 
 /**
- * TheStudent AI Auto automatically routes a reply on the server:
+ * TheStudent AI automatically routes a reply on the server:
  *
- *   1. NVIDIA Nemotron 3 Ultra (the default)
- *   2. NVIDIA gpt-oss-20b
- *   3. other free NVIDIA chat models that aren't busy (best first)
- *   4. Z.AI GLM-4.7-Flash
- *   5. The private GPT-OSS tutor Space
- *   6. TheStudent's own DZD model on Hugging Face (the final fallback)
+ *   1. NVIDIA candidates (Nemotron, NVIDIA-hosted GPT-OSS, then other
+ *      available chat models, best first)
+ *   2. The private GPT-OSS tutor Space
+ *   3. Z.AI GLM-4.7-Flash
  *
- * The allowlisted Flash v1 choice tries NVIDIA candidates only; Study v1
- * tries the private GPT-OSS tutor route only. Neither manual choice silently
- * falls back to a different provider. Provider/model IDs stay server-side.
- *
- * In Auto mode, a model counts as busy when it is rate limited, errors,
- * refuses the request, or doesn't start answering in time. Nothing has been
- * sent to the student at that point, so the next model takes over invisibly.
- * The first output commits the reply to a model; later tool steps stay with
- * that model.
+ * TheStudent AI always uses this automatic route. Provider/model IDs stay
+ * server-side. A model counts as busy when it is rate limited, errors, refuses
+ * the request, or doesn't start answering in time. Nothing has been sent to
+ * the student at that point, so the next model takes over invisibly. The first
+ * output commits the reply to a model; later tool steps stay with that model.
  *
  * If every model is busy, the whole list is tried again up to 3 more times,
  * after short waits (about 1.5 s, 4 s and 8 s). Models that just failed are
@@ -87,14 +73,11 @@ const MIN_ATTEMPT_MS = 8000;
 /** Always-thinking models need room for the thinking plus the answer. */
 const MIN_TOKENS_FOR_THINKING_MODELS = 1024;
 
-/** TheStudent's own model runs on CPU: keep its share of the conversation small. */
-const DZD_MAX_TEXT_CHARS = 12_000;
-
 export type RouteCandidate = {
   /** Internal id, for logs only (never sent to the browser). */
   id: string;
-  kind: "nvidia" | "zai" | "gpt-oss" | "dzd";
-  tier: "primary" | "secondary" | "extra" | "zai" | "gpt-oss" | "dzd";
+  kind: "nvidia" | "gpt-oss" | "zai";
+  tier: "primary" | "secondary" | "extra" | "gpt-oss" | "zai";
   vision: boolean;
   reasoning?: ReasoningConfig;
   /** Cold private Spaces can take longer to start answering. */
@@ -196,20 +179,15 @@ export type RoutePurpose = "chat" | "fast" | "voice";
 export async function buildRoutePlan({
   purpose,
   needsVision,
-  dzdHooks,
   reasoningLevel,
-  routeMode = "auto",
 }: {
   purpose: RoutePurpose;
   needsVision: boolean;
-  dzdHooks?: DzdStreamHooks;
   reasoningLevel?: ReasoningLevel;
-  routeMode?: ChatRouteMode;
 }): Promise<RouteCandidate[]> {
   const plan: RouteCandidate[] = [];
 
-  // Flash is a direct NVIDIA route; Auto also includes NVIDIA first.
-  if (routeMode !== "study" && hasNvidiaKey()) {
+  if (hasNvidiaKey()) {
     const catalog = await nvidiaCatalog();
     // The list only holds models the keys can use. If it couldn't be
     // loaded, the two named models are still tried.
@@ -237,20 +215,9 @@ export async function buildRoutePlan({
     }
   }
 
-  if (routeMode === "auto" && hasZaiKey()) {
-    plan.push({
-      create: () => createZaiModel(ZAI_GLM_FLASH),
-      id: `zai:${ZAI_GLM_FLASH}`,
-      kind: "zai",
-      reasoning: { control: "toggle", defaultLevel: "high" },
-      tier: "zai",
-      vision: false,
-    });
-  }
-
-  // Study uses the stateless GPT-OSS tutor Space; Auto keeps it as a
-  // fallback after NVIDIA and Z.AI. The Space has no native tool runner.
-  if (routeMode !== "flash" && purpose !== "fast" && isGptOssEnabled()) {
+  // The GPT-OSS Space is the first fallback after NVIDIA. It is intentionally
+  // skipped for short helper calls so cold starts don't delay titles.
+  if (purpose !== "fast" && isGptOssEnabled()) {
     const level = reasoningLevel ?? "low";
     plan.push({
       create: () => createGptOssModel(level),
@@ -264,12 +231,13 @@ export async function buildRoutePlan({
     });
   }
 
-  if (routeMode === "auto" && purpose !== "fast" && getDzdToken()) {
+  if (hasZaiKey()) {
     plan.push({
-      create: () => createDzdModel(dzdHooks),
-      id: "dzd:hf-space",
-      kind: "dzd",
-      tier: "dzd",
+      create: () => createZaiModel(ZAI_GLM_FLASH),
+      id: `zai:${ZAI_GLM_FLASH}`,
+      kind: "zai",
+      reasoning: { control: "toggle", defaultLevel: "high" },
+      tier: "zai",
       vision: false,
     });
   }
@@ -320,14 +288,6 @@ class EmptyResponseError extends Error {
     super("The model returned an empty response");
     this.finishReason = finishReason;
     this.name = "EmptyResponseError";
-  }
-}
-
-/** The selected branded route is unavailable in this deployment. */
-export class SelectedModelUnavailableError extends Error {
-  constructor() {
-    super("The selected route is not configured");
-    this.name = "SelectedModelUnavailableError";
   }
 }
 
@@ -405,10 +365,7 @@ export function classifyFailure(error: unknown): Failure {
     return { kind: "busy", label: "empty response" };
   }
   const name = error instanceof Error ? error.name : "Error";
-  return {
-    kind: "busy",
-    label: name === "DzdTimeoutError" ? "timed out" : `failed (${name})`,
-  };
+  return { kind: "busy", label: `failed (${name})` };
 }
 
 function remember(candidate: RouteCandidate, failure: Failure) {
@@ -493,60 +450,6 @@ function reasoningOptionsFor(
     };
   }
   return {};
-}
-
-function capText(text: string) {
-  return text.length > DZD_MAX_TEXT_CHARS
-    ? `${text.slice(0, DZD_MAX_TEXT_CHARS)}\n\n[...shortened]`
-    : text;
-}
-
-/**
- * TheStudent's own model: plain text history (no tool calls, no files), the latest
- * turns only, its own instructions (it searches the web by itself) and its
- * token limit.
- */
-function forDzd(
-  options: LanguageModelV4CallOptions,
-  instructions: string | undefined
-): LanguageModelV4CallOptions {
-  const system =
-    instructions ??
-    options.prompt
-      .filter((message) => message.role === "system")
-      .map((message) => message.content)
-      .join("\n\n");
-
-  const turns: LanguageModelV4Message[] = [];
-  for (const message of options.prompt) {
-    if (message.role === "user") {
-      const content = message.content
-        .filter((part) => part.type === "text")
-        .map((part) => ({ ...part, text: capText(part.text) }));
-      if (content.length > 0) {
-        turns.push({ content, role: "user" });
-      }
-    } else if (message.role === "assistant") {
-      const content = message.content
-        .filter((part) => part.type === "text" && part.text.trim())
-        .map((part) => part);
-      if (content.length > 0) {
-        turns.push({ content, role: "assistant" });
-      }
-    }
-  }
-  let recent = turns.slice(-DZD_HISTORY_MESSAGES);
-  const firstUser = recent.findIndex((message) => message.role === "user");
-  recent = firstUser > 0 ? recent.slice(firstUser) : recent;
-
-  return {
-    ...options,
-    maxOutputTokens: getDzdMaxTokens(),
-    prompt: system ? [{ content: system, role: "system" }, ...recent] : recent,
-    providerOptions: {},
-    toolChoice: undefined,
-    tools: undefined,
-  };
 }
 
 const APP_TOOL_NAMES = new Set([
@@ -658,14 +561,8 @@ export type RouterEvent =
 
 export type RouterOptions = {
   purpose: RoutePurpose;
-  /** Auto fallback, NVIDIA-only Flash, or GPT-OSS-only Study routing. */
-  routeMode?: ChatRouteMode;
   /** The student's reasoning choice ("off" = Fast). */
   reasoningLevel?: ReasoningLevel;
-  /** Progress callbacks for TheStudent's own model. */
-  dzdHooks?: DzdStreamHooks;
-  /** Instructions for TheStudent's own model (it has its own web search). */
-  dzdInstructions?: string;
   /** Time (ms since epoch) by which a reply must have started. */
   deadline?: number;
   /** Status for the waiting indicator (never names a model). */
@@ -755,7 +652,7 @@ function logFailure(
     return;
   }
   console.warn(
-    `[dzd-router] ${candidate.id} ${failure.label}; trying the next model. ${describeError(error)}`
+    `[thestudent-router] ${candidate.id} ${failure.label}; trying the next model. ${describeError(error)}`
   );
 }
 
@@ -774,11 +671,9 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
     planPromise ??= options.plan
       ? options.plan(needsVision)
       : buildRoutePlan({
-          dzdHooks: options.dzdHooks,
           needsVision,
           purpose: options.purpose,
           reasoningLevel: level,
-          routeMode: options.routeMode,
         });
     return planPromise;
   };
@@ -806,9 +701,7 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
         ...reasoningOptionsFor(candidate, level),
       },
     };
-    if (candidate.kind === "dzd") {
-      params = forDzd(params, options.dzdInstructions);
-    } else if (candidate.kind === "gpt-oss") {
+    if (candidate.kind === "gpt-oss") {
       params = forGptOss(params, retryAfterEmptyLength);
     }
     if (
@@ -840,13 +733,8 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
         order.push(candidate);
         continue;
       }
-      // Busy named models are skipped in the first round only; the last
-      // resort is always tried.
-      if (
-        round === 0 &&
-        candidate.tier !== "dzd" &&
-        isBusy(candidate.id, now)
-      ) {
+      // Busy providers are skipped in the first round and reconsidered on retry.
+      if (round === 0 && isBusy(candidate.id, now)) {
         continue;
       }
       order.push(candidate);
@@ -877,13 +765,6 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
     ) => Promise<T>
   ): Promise<T> {
     const plan = await getPlan(promptHasImages(call.prompt));
-    if (
-      plan.length === 0 &&
-      options.routeMode &&
-      options.routeMode !== "auto"
-    ) {
-      throw new SelectedModelUnavailableError();
-    }
     const until = deadline();
     const excluded = new Set<string>();
     const gptOssLengthRetried = new Set<string>();
@@ -923,11 +804,9 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
           candidate.tier === "primary" ? "primary" : "standard"
         ];
         const firstOutputMs =
-          candidate.tier === "dzd"
-            ? Math.max(left, MIN_ATTEMPT_MS)
-            : !options.firstOutputMs && candidate.firstOutputMs
-              ? candidate.firstOutputMs
-              : defaultFirstOutputMs;
+          !options.firstOutputMs && candidate.firstOutputMs
+            ? candidate.firstOutputMs
+            : defaultFirstOutputMs;
         const timeoutMs = options.firstOutputMs
           ? firstOutputMs
           : Math.max(Math.min(firstOutputMs, left), MIN_ATTEMPT_MS);
@@ -948,7 +827,7 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
           busyUntil.delete(candidate.id);
           if (attempts > 1 || candidate.tier !== "primary") {
             console.info(
-              `[dzd-router] answered by ${candidate.id} (attempt ${attempts})`
+              `[thestudent-router] answered by ${candidate.id} (attempt ${attempts})`
             );
           }
           sticky = candidate.id;
@@ -989,7 +868,7 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
     }
 
     console.error(
-      `[dzd-router] no model could answer after ${attempts} attempts; last: ${describeError(lastError)}`
+      `[thestudent-router] no model could answer after ${attempts} attempts; last: ${describeError(lastError)}`
     );
     throw new AllModelsBusyError(lastError, attempts);
   }
@@ -1091,8 +970,8 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
         )
       ),
 
-    modelId: "dzd-learn-ai",
-    provider: "dzd-learn",
+    modelId: "thestudent-ai",
+    provider: "thestudent-ai",
     specificationVersion: "v4",
     // Image links are passed on as links (the vision models fetch them).
     supportedUrls: { "image/*": [/^https:\/\/.+/] },
@@ -1101,14 +980,8 @@ export function createRoutedModel(options: RouterOptions): LanguageModelV4 {
 
 /** A short, student-friendly message when no model could answer. */
 export function routerErrorMessage(error: unknown) {
-  if (error instanceof SelectedModelUnavailableError) {
-    return "This TheStudent AI option isn't available right now. Choose TheStudent AI Auto or try again later.";
-  }
   if (error instanceof AllModelsBusyError) {
     return "TheStudent AI is very busy right now. Please wait a minute and send your message again.";
-  }
-  if (error instanceof Error && error.name === "DzdTimeoutError") {
-    return "TheStudent AI took too long to answer. Please try a shorter question.";
   }
   return "TheStudent AI couldn't finish this reply. Please send your message again.";
 }

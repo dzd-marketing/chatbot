@@ -41,10 +41,6 @@ export function markStopped(parts: ChatMessage["parts"]): ChatMessage["parts"] {
       ) {
         return { ...part, state: "done" as const };
       }
-      // TheStudent AI's research panel stops "running".
-      if (part.type === "data-dzd-activity" && part.data.status === "running") {
-        return { ...part, data: { ...part.data, status: "done" as const } };
-      }
       return part;
     });
   return [...kept, { data: null, type: "data-stopped" }];

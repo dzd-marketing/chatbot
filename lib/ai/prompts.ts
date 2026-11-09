@@ -126,7 +126,7 @@ Encourage deep conceptual understanding rather than quick shortcuts. Keep explan
 
 /**
  * Used when TheStudent AI has NO web tools for this request (web search switched
- * off by the student, or the selected model cannot call tools). TheStudent AI must
+ * off by the student, or tools are unavailable on the automatic route). TheStudent AI must
  * not imply it fetched or verified any document.
  */
 export const examResourcesCapabilityPrompt = `## Current capabilities for exam resources (overrides Section 5 where they conflict)

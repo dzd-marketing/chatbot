@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  CHAT_MODEL_IDS,
+  ACCEPTED_CHAT_MODEL_IDS,
   DEFAULT_CHAT_MODEL,
   reasoningLevels,
 } from "@/lib/ai/models";
@@ -69,9 +69,12 @@ export const postRequestBodySchema = z.object({
   message: userMessageSchema.optional(),
   messages: z.array(toolApprovalMessageSchema).optional(),
   reasoning: z.enum(reasoningLevels).optional(),
-  // Only the three branded student-facing choices are accepted. Never pass
-  // a client-supplied provider or underlying model id through to the router.
-  selectedChatModel: z.enum(CHAT_MODEL_IDS).default(DEFAULT_CHAT_MODEL),
+  // Accept legacy ids from already-open clients, but the route always uses Auto.
+  // Arbitrary provider or underlying model ids are never passed to the router.
+  selectedChatModel: z
+    .enum(ACCEPTED_CHAT_MODEL_IDS)
+    .transform(() => DEFAULT_CHAT_MODEL)
+    .default(DEFAULT_CHAT_MODEL),
   selectedVisibilityType: z.enum(["public", "private"]),
   // The Tools menu (lib/ai/tool-groups.ts). Missing tools stay on.
   tools: z

@@ -170,8 +170,7 @@ export function ToolsDropdown() {
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" sideOffset={8}>
-          {modelName} can't use tools. Pick another model for web search and
-          documents.
+          Tools aren't available for {modelName} right now.
         </TooltipContent>
       </Tooltip>
     );
@@ -402,7 +401,7 @@ type PanelPosition = {
 
 export function ReasoningDropdown() {
   const { currentModelId, reasoningLevel, setReasoningLevel } = useActiveChat();
-  // Includes NVIDIA models, so the control follows the selected model.
+  // The router maps this shared choice onto the provider that answers.
   const { model } = useChatModel(currentModelId);
   const options = getReasoningOptions(model);
   const selected =

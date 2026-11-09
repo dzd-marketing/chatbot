@@ -15,10 +15,9 @@ import { checkBotId } from "botid/server";
 import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
 import { auth } from "@/app/(auth)/auth";
-import type { DzdStreamHooks } from "@/lib/ai/dzd";
 import {
+  DEFAULT_CHAT_MODEL,
   getChatModel,
-  getChatRouteMode,
   getModelCapabilities,
   resolveReasoningLevel,
 } from "@/lib/ai/models";
@@ -57,18 +56,13 @@ import {
 import type { DBMessage } from "@/lib/db/schema";
 import { inlineDocumentAttachments } from "@/lib/documents/attachments";
 import { ChatbotError } from "@/lib/errors";
-import type {
-  ChatMessage,
-  DzdActivityData,
-  WaitingStatusData,
-} from "@/lib/types";
+import type { ChatMessage, WaitingStatusData } from "@/lib/types";
 import { convertToUIMessages, generateUUID } from "@/lib/utils";
 import { voiceMessagesForModel } from "@/lib/voice-message";
 import { heardOfLastReply } from "@/lib/voice-speech";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
-// Replies may browse the web for a few minutes, and the last-resort model
-// runs on CPU (see lib/ai/router.ts and lib/ai/dzd.ts).
+// Allow time for web research and provider retries.
 export const maxDuration = 300;
 
 /** A reply must have started by then, leaving time to finish and save. */
@@ -151,7 +145,6 @@ export async function POST(request: Request) {
       message,
       messages,
       reasoning,
-      selectedChatModel,
       selectedVisibilityType,
       tools: requestedTools,
       voice,
@@ -171,10 +164,9 @@ export async function POST(request: Request) {
       return new ChatbotError("unauthorized:chat").toResponse();
     }
 
-    // The request schema allowlists these branded choices. The server maps
-    // them to fixed route modes; arbitrary provider/model IDs are rejected.
-    const chatModel = selectedChatModel;
-    const routeMode = getChatRouteMode(selectedChatModel);
+    // A stale client may submit a legacy model ID; the schema normalizes it
+    // and the server always runs the automatic provider route.
+    const chatModel = DEFAULT_CHAT_MODEL;
 
     // No message limits: students can chat as much as they need.
 
@@ -280,7 +272,7 @@ export async function POST(request: Request) {
 
     // Uploaded PDF / Word / text files become text the model can read.
     // Voice messages: the model reads the transcript, not the audio.
-    // (The CPU fallback model gets a shorter version; see the router.)
+    // (The GPT-OSS fallback gets bounded context; see the router.)
     const convertedMessages = await convertToModelMessages(
       inlineDocumentAttachments(voiceMessagesForModel(uiMessages), {
         perDocumentChars: 60_000,
@@ -294,7 +286,7 @@ export async function POST(request: Request) {
       : convertedMessages;
 
     const stream = createUIMessageStream({
-      execute: async ({ writer: dataStream }) => {
+      execute: ({ writer: dataStream }) => {
         const modelName = modelConfig?.name ?? chatModel;
         let hasModelActivity = false;
         let healthCheckTimer: ReturnType<typeof setTimeout> | undefined;
@@ -344,43 +336,6 @@ export async function POST(request: Request) {
           clearHealthCheckTimer();
         };
 
-        // TheStudent AI: the Space's progress updates and tool telemetry are
-        // shown as one data part, updated in place and saved with the reply.
-        const dzdActivityId = generateUUID();
-        const dzd: { activity: DzdActivityData | null } = { activity: null };
-
-        const writeDzdActivity = () => {
-          const { activity } = dzd;
-          if (activity) {
-            dataStream.write({
-              data: { ...activity, progress: [...activity.progress] },
-              id: dzdActivityId,
-              type: "data-dzd-activity",
-            });
-          }
-        };
-
-        const dzdHooks: DzdStreamHooks = {
-          onProgress(text) {
-            markModelActive();
-            dzd.activity ??= { progress: [], status: "running" };
-            if (dzd.activity.progress.at(-1) === text) {
-              return;
-            }
-            dzd.activity.progress = [...dzd.activity.progress, text].slice(-12);
-            writeDzdActivity();
-          },
-          onTelemetry({ toolSteps, totalMs }) {
-            dzd.activity ??= { progress: [], status: "running" };
-            if (toolSteps) {
-              dzd.activity.toolSteps = toolSteps;
-            }
-            if (totalMs !== undefined) {
-              dzd.activity.totalMs = totalMs;
-            }
-          },
-        };
-
         const enabledTools = supportsTools ? activeToolNames(toolSettings) : [];
         const requiredFirstTool =
           enabledTools.includes("webSearch") &&
@@ -392,44 +347,26 @@ export async function POST(request: Request) {
         const interruptedAfter = voice
           ? heardOfLastReply(uiMessages, voice.interruptedAfterWords)
           : undefined;
-        const voiceInstructions = (builtInWebSearch: boolean) =>
-          voice
-            ? voiceSystemPrompt({
-                builtInWebSearch,
-                calculator: toolSettings.calculator,
-                interruptedAfter,
-                language: voice.language,
-                requestHints,
-                supportsTools: builtInWebSearch ? false : supportsTools,
-                webSearch: toolSettings.webSearch,
-              })
-            : null;
-        const instructions =
-          voiceInstructions(false) ??
-          systemPrompt({
-            builtInWebSearch: false,
-            calculator: toolSettings.calculator,
-            documents: toolSettings.documents,
-            pageReading: toolSettings.webFetch,
-            requestHints,
-            study: toolSettings.study,
-            supportsTools,
-            webSearch: toolSettings.webSearch,
-          });
-        // If the reply falls back to TheStudent's own model: it searches the web on
-        // its own server and has none of the website's tools.
-        const dzdInstructions =
-          voiceInstructions(true) ??
-          systemPrompt({
-            builtInWebSearch: true,
-            calculator: false,
-            documents: false,
-            pageReading: false,
-            requestHints,
-            study: false,
-            supportsTools: false,
-            webSearch: toolSettings.webSearch,
-          });
+        const instructions = voice
+          ? voiceSystemPrompt({
+              builtInWebSearch: false,
+              calculator: toolSettings.calculator,
+              interruptedAfter,
+              language: voice.language,
+              requestHints,
+              supportsTools,
+              webSearch: toolSettings.webSearch,
+            })
+          : systemPrompt({
+              builtInWebSearch: false,
+              calculator: toolSettings.calculator,
+              documents: toolSettings.documents,
+              pageReading: toolSettings.webFetch,
+              requestHints,
+              study: toolSettings.study,
+              supportsTools,
+              webSearch: toolSettings.webSearch,
+            });
 
         const result = streamText({
           // Models without tool support get no tools at all (llama.cpp, for
@@ -458,8 +395,6 @@ export async function POST(request: Request) {
           messages: modelMessages,
           model: getLanguageModel(chatModel, {
             deadline: startedAt + ROUTING_DEADLINE_MS,
-            dzdHooks,
-            dzdInstructions,
             onEvent(event) {
               // Never names a model or provider.
               writeWaitingStatus(
@@ -472,7 +407,6 @@ export async function POST(request: Request) {
             // Voice: the quick model first, and less waiting on slow ones.
             purpose: voice ? "voice" : "chat",
             reasoningLevel,
-            routeMode,
           }),
           onAbort() {
             stopWaitingStatus();
@@ -560,32 +494,9 @@ export async function POST(request: Request) {
           })
         );
 
-        // Only writes when the reply came from TheStudent's own model.
-        const dzdActivityTask = (async () => {
-          try {
-            await result.finishReason;
-          } catch {
-            /* still mark the activity as finished */
-          }
-          const { activity } = dzd;
-          const hasSteps =
-            activity !== null &&
-            (activity.progress.length > 0 ||
-              (activity.toolSteps?.length ?? 0) > 0);
-          if (activity && hasSteps) {
-            activity.status = "done";
-            try {
-              writeDzdActivity();
-            } catch {
-              /* the stream may already be closed */
-            }
-          }
-        })();
-
         // Titles and follow-up suggestions are generated by /api/chat/finalize
         // after this answer is saved. Keep optional work off the reply stream so
         // the composer becomes ready as soon as the answer has finished.
-        await dzdActivityTask;
       },
       generateId: generateUUID,
       onEnd: async ({ messages: endedMessages, isAborted }) => {

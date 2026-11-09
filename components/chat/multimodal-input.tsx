@@ -26,7 +26,6 @@ import {
   type VoiceLanguage,
   type VoiceResult,
 } from "@/hooks/use-voice-recorder";
-import { chatModels, DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
 import { withStoppedReply } from "@/lib/chat/stopped";
 import { prepareImageForUpload } from "@/lib/image-compress";
 import { isExternalUrl, PRIVACY_URL, TERMS_URL } from "@/lib/legal";
@@ -42,13 +41,6 @@ import {
   PromptInputTools,
 } from "../ai-elements/prompt-input";
 import { Button } from "../ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { AnimatedPlaceholder } from "./animated-placeholder";
 import { ReasoningDropdown, ToolsDropdown } from "./composer-controls";
@@ -219,13 +211,6 @@ function PureMultimodalInput({
         case "rename":
           toast("Rename is available from the sidebar chat menu.");
           break;
-        case "model": {
-          const modelBtn = document.querySelector<HTMLButtonElement>(
-            "[data-testid='model-selector']"
-          );
-          modelBtn?.click();
-          break;
-        }
         case "theme":
           setTheme(resolvedTheme === "dark" ? "light" : "dark");
           break;
@@ -864,7 +849,7 @@ function PureMultimodalInput({
                       status={status}
                     />
                   </div>
-                  <DzdLearnLabel selectedModelId={selectedModelId} />
+                  <TheStudentAiLabel />
                   <div className="hidden md:contents">
                     <ReasoningDropdown />
                     <ToolsDropdown />
@@ -1052,31 +1037,16 @@ function PureAttachmentsButton({
 
 const AttachmentsButton = memo(PureAttachmentsButton);
 
-/** The branded route picker, shown beside file upload on every screen size. */
-function DzdLearnLabel({ selectedModelId }: { selectedModelId: string }) {
-  const { setCurrentModelId } = useActiveChat();
-  const value = chatModels.some((model) => model.id === selectedModelId)
-    ? selectedModelId
-    : DEFAULT_CHAT_MODEL;
-
+/** Static assistant identity; provider routing stays automatic on the server. */
+function TheStudentAiLabel() {
   return (
-    <Select onValueChange={setCurrentModelId} value={value}>
-      <SelectTrigger
-        aria-label="Choose a TheStudent AI mode"
-        className="h-8 min-w-0 max-w-[220px] gap-1.5 rounded-full border-0 bg-transparent px-2 font-medium text-[12px] text-foreground/75 shadow-none transition-colors hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/40 max-md:h-9 max-md:px-2.5 max-md:text-[13px]"
-        data-testid="model-selector"
-      >
-        <BrandMark size={20} />
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent align="start" position="popper" side="top" sideOffset={8}>
-        {chatModels.map((model) => (
-          <SelectItem key={model.id} value={model.id}>
-            {model.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div
+      className="inline-flex h-8 min-w-0 max-w-[220px] items-center gap-1.5 rounded-full px-2 font-medium text-[12px] text-foreground/75 max-md:h-9 max-md:px-2.5 max-md:text-[13px]"
+      data-testid="assistant-label"
+    >
+      <BrandMark size={20} />
+      <span>TheStudent AI</span>
+    </div>
   );
 }
 

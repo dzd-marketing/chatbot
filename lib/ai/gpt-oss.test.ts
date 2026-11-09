@@ -323,7 +323,6 @@ test("retries one empty length response with reduced history", async () => {
     plan: async () => [candidate],
     purpose: "chat",
     reasoningLevel: "medium",
-    routeMode: "study",
     sleep: () => Promise.resolve(),
   });
   const result = await routed.doStream({
@@ -467,7 +466,6 @@ test("runs webSearch then webFetch as app-owned structured tools", async () => {
     plan: () => Promise.resolve([candidate]),
     purpose: "chat",
     reasoningLevel: "low",
-    routeMode: "study",
     sleep: () => Promise.resolve(),
   });
   const toolExecutions: string[] = [];

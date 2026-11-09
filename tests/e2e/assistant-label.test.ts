@@ -1,44 +1,28 @@
 import { expect, test } from "@playwright/test";
 
-const studentChoices = [
-  "TheStudent AI Auto",
-  "TheStudent AI Flash v1",
-  "TheStudent AI Study v1",
-];
-
-test.describe("Assistant route picker", () => {
+test.describe("Assistant label", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
   });
 
-  test("offers only the three branded choices in the composer", async ({
+  test("shows only the fixed TheStudent AI label in the composer", async ({
     page,
   }) => {
-    const picker = page.getByTestId("model-selector");
-    await expect(picker).toBeVisible();
-    await expect(picker).toHaveText(studentChoices[0]);
-
-    await picker.click();
-    const options = page.getByRole("option");
-    await expect(options).toHaveCount(3);
-    await expect(options).toHaveText(studentChoices);
-
-    await options.nth(2).click();
-    await expect(picker).toHaveText(studentChoices[2]);
+    const label = page.getByTestId("assistant-label");
+    await expect(label).toBeVisible();
+    await expect(label).toHaveText("TheStudent AI");
+    await expect(page.getByTestId("model-selector")).toHaveCount(0);
+    await expect(page.getByRole("option")).toHaveCount(0);
   });
 
-  test("exposes no provider or underlying model names in the models API", async ({
+  test("exposes only the automatic branded route in the models API", async ({
     request,
   }) => {
-    const response = await request.get("/api/models?v=4");
+    const response = await request.get("/api/models?v=6");
     const body = await response.json();
 
-    expect(Object.keys(body.capabilities)).toEqual([
-      "dzd-learn/auto",
-      "dzd-learn/flash-v1",
-      "dzd-learn/study-v1",
-    ]);
+    expect(Object.keys(body.capabilities)).toEqual(["thestudent/auto"]);
     expect(body.extraModels).toEqual([]);
-    expect(JSON.stringify(body)).not.toMatch(/nvidia|opencode|mimo/i);
+    expect(JSON.stringify(body)).not.toMatch(/dzd|nvidia|opencode|mimo/i);
   });
 });

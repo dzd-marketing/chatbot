@@ -20,7 +20,7 @@ const fetchModels = (url: string): Promise<ModelsResponse> =>
   fetch(url).then((response) => response.json());
 
 /**
- * Branded TheStudent AI choices and their capabilities from /api/models.
+ * The fixed TheStudent AI route and its capabilities from /api/models.
  * Every caller shares one request and one SWR cache entry.
  */
 export function useChatModels() {
@@ -47,7 +47,7 @@ export function useChatModels() {
   };
 }
 
-/** The selectable model with this ID, including discovered ones. */
+/** The student-facing assistant with this ID. */
 export function useChatModel(modelId: string) {
   const { capabilities, models, isLoading } = useChatModels();
   return {

@@ -1,5 +1,5 @@
 import { auth } from "@/app/(auth)/auth";
-import { getDzdToken } from "@/lib/ai/dzd";
+import { getHfReadToken } from "@/lib/ai/huggingface";
 import { forSpeech } from "@/lib/voice-pronounce";
 
 /**
@@ -29,7 +29,7 @@ function spaceUrl() {
 
 function spaceHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
-  const token = getDzdToken();
+  const token = getHfReadToken();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -64,7 +64,7 @@ export async function GET() {
       if (response.status === 401 || response.status === 403) {
         reason = "token-rejected";
       } else if (response.status === 404) {
-        reason = getDzdToken() ? "not-found-or-no-access" : "missing-token";
+        reason = getHfReadToken() ? "not-found-or-no-access" : "missing-token";
       }
       return Response.json(
         { ok: false, reason, status: response.status },

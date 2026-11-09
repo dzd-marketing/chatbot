@@ -1,7 +1,7 @@
 import { getAllCapabilities } from "@/lib/ai/available-models";
 
 /**
- * The capabilities of the three branded TheStudent AI choices. Provider and
+ * Capabilities for the single automatic TheStudent AI route. Provider and
  * underlying model identities remain server-side.
  */
 export function GET() {

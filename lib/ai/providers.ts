@@ -18,8 +18,7 @@ export const myProvider = isTestEnvironment
   : null;
 
 /**
- * TheStudent AI. The server applies the allowlisted route selected by the
- * student (automatic fallback, NVIDIA-only, or GPT-OSS-only Study routing).
+ * TheStudent AI. The server automatically tries NVIDIA, GPT-OSS, then Z.AI.
  */
 export function getLanguageModel(
   _modelId: string,

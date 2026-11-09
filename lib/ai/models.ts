@@ -1,62 +1,39 @@
-/**
- * Student-facing choices are TheStudent AI modes, not provider or model IDs.
- * The server maps these allowlisted IDs to automatic, NVIDIA-only, or
- * GPT-OSS-only Study routing in lib/ai/router.ts.
- */
-export const DZD_LEARN_MODEL_ID = "dzd-learn/auto";
-export const DZD_FLASH_MODEL_ID = "dzd-learn/flash-v1";
-export const DZD_STUDY_MODEL_ID = "dzd-learn/study-v1";
-export const CHAT_MODEL_IDS = [
-  DZD_LEARN_MODEL_ID,
-  DZD_FLASH_MODEL_ID,
-  DZD_STUDY_MODEL_ID,
-] as const;
-export type ChatModelId = (typeof CHAT_MODEL_IDS)[number];
-export type ChatRouteMode = "auto" | "flash" | "study";
+/** The one student-facing assistant. Provider identities remain server-side. */
+export const THESTUDENT_AI_MODEL_ID = "thestudent/auto";
+export const DEFAULT_CHAT_MODEL = THESTUDENT_AI_MODEL_ID;
+export const CHAT_MODEL_IDS = [THESTUDENT_AI_MODEL_ID] as const;
 
-export const DEFAULT_CHAT_MODEL = DZD_LEARN_MODEL_ID;
+/**
+ * Accepted only for requests from already-open clients during a deployment.
+ * Every legacy choice is normalized to Auto by the chat route.
+ */
+export const LEGACY_CHAT_MODEL_IDS = [
+  "dzd-learn/auto",
+  "dzd-learn/flash-v1",
+  "dzd-learn/study-v1",
+] as const;
+export const ACCEPTED_CHAT_MODEL_IDS = [
+  ...CHAT_MODEL_IDS,
+  ...LEGACY_CHAT_MODEL_IDS,
+] as const;
+
+export type ChatModelId = (typeof CHAT_MODEL_IDS)[number];
+export type AcceptedChatModelId = (typeof ACCEPTED_CHAT_MODEL_IDS)[number];
 
 export function isChatModelId(modelId: string): modelId is ChatModelId {
   return (CHAT_MODEL_IDS as readonly string[]).includes(modelId);
 }
 
-export function getChatRouteMode(modelId: ChatModelId): ChatRouteMode {
-  switch (modelId) {
-    case DZD_FLASH_MODEL_ID:
-      return "flash";
-    case DZD_STUDY_MODEL_ID:
-      return "study";
-    default:
-      return "auto";
-  }
-}
-
-/**
- * The model list endpoint used by the composer. The version query makes
- * browsers skip responses cached by older deployments; bump it when the
- * response shape changes.
- */
-export const MODELS_API_URL = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models?v=5`;
+/** The model list endpoint used by the composer; bump to bypass stale caches. */
+export const MODELS_API_URL = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models?v=6`;
 
 export type ModelCapabilities = {
   tools: boolean;
   vision: boolean;
   reasoning: boolean;
-  /**
-   * The model's own server searches the web when needed (no website tools
-   * involved), so the Web search toggle doesn't apply to it.
-   */
   builtInWebSearch?: boolean;
 };
 
-/**
- * User-selectable reasoning level. How it maps onto a model depends on that
- * model's `reasoning.control`:
- * - "toggle": the model can only switch thinking on or off (Z.AI GLM-4.7
- *   series: `thinking.type`). "off" = Fast, anything else = Thinking.
- * - "effort": the model accepts low / medium / high effort and cannot turn
- *   reasoning off (OpenAI gpt-oss: `reasoningEffort`). "off" maps to "low".
- */
 export const reasoningLevels = ["off", "low", "medium", "high"] as const;
 export type ReasoningLevel = (typeof reasoningLevels)[number];
 
@@ -121,11 +98,7 @@ export function getReasoningOptions(
     : effortReasoningOptions;
 }
 
-/**
- * Coerces a stored or requested level to one the model actually supports,
- * falling back to the model's default. Returns undefined for models without
- * a reasoning control.
- */
+/** Coerces the stored reasoning choice to the current assistant's capability. */
 export function resolveReasoningLevel(
   model: Pick<ChatModel, "reasoning"> | undefined,
   level: ReasoningLevel | undefined
@@ -141,75 +114,33 @@ export function resolveReasoningLevel(
   return requested === "off" ? "low" : requested;
 }
 
-export const dzdLearnModel: ChatModel = {
-  description: "Automatic routing across TheStudent AI services",
-  id: DZD_LEARN_MODEL_ID,
-  name: "TheStudent AI Auto",
+const theStudentAiModel: ChatModel = {
+  description: "Automatic routing for TheStudent AI",
+  id: THESTUDENT_AI_MODEL_ID,
+  name: "TheStudent AI",
   provider: "thestudent",
-  // Fast (thinking off) or Thinking; the server applies it to whichever
-  // model answers.
   reasoning: { control: "toggle", defaultLevel: "high" },
 };
 
-export const dzdFlashModel: ChatModel = {
-  description: "Quick replies from TheStudent AI",
-  id: DZD_FLASH_MODEL_ID,
-  name: "TheStudent AI Flash v1",
-  provider: "thestudent",
-  reasoning: { control: "toggle", defaultLevel: "off" },
-};
-
-export const dzdStudyModel: ChatModel = {
-  description: "Deeper tutoring from TheStudent AI",
-  id: DZD_STUDY_MODEL_ID,
-  name: "TheStudent AI Study v1",
-  provider: "thestudent",
-  reasoning: { control: "effort", defaultLevel: "medium" },
-};
-
-/** What each student-facing route can do. */
-export const dzdLearnCapabilities: ModelCapabilities = {
+/** Auto may use image-capable NVIDIA models before text-only fallbacks. */
+const theStudentAiCapabilities: ModelCapabilities = {
   reasoning: true,
   tools: true,
   vision: true,
 };
 
-export const dzdFlashCapabilities: ModelCapabilities = {
-  reasoning: true,
-  tools: true,
-  vision: true,
-};
+export const chatModels: ChatModel[] = [theStudentAiModel];
 
-export const dzdStudyCapabilities: ModelCapabilities = {
-  reasoning: true,
-  tools: true,
-  vision: false,
-};
-
-export const chatModels: ChatModel[] = [
-  dzdLearnModel,
-  dzdFlashModel,
-  dzdStudyModel,
-];
-
-const chatModelCapabilities: Record<ChatModelId, ModelCapabilities> = {
-  [DZD_LEARN_MODEL_ID]: dzdLearnCapabilities,
-  [DZD_FLASH_MODEL_ID]: dzdFlashCapabilities,
-  [DZD_STUDY_MODEL_ID]: dzdStudyCapabilities,
-};
-
-export function getChatModel(modelId: string): ChatModel {
-  return chatModels.find((model) => model.id === modelId) ?? dzdLearnModel;
+export function getChatModel(_modelId: string): ChatModel {
+  return theStudentAiModel;
 }
 
-export function getModelCapabilities(modelId: string): ModelCapabilities {
-  return isChatModelId(modelId)
-    ? chatModelCapabilities[modelId]
-    : dzdLearnCapabilities;
+export function getModelCapabilities(_modelId: string): ModelCapabilities {
+  return theStudentAiCapabilities;
 }
 
 export function getCapabilities(): Record<string, ModelCapabilities> {
-  return { ...chatModelCapabilities };
+  return { [THESTUDENT_AI_MODEL_ID]: theStudentAiCapabilities };
 }
 
 export function getActiveModels(): ChatModel[] {
