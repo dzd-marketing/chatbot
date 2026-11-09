@@ -81,7 +81,7 @@ test("prepares bounded requests and keeps the newest student question", () => {
   assert.equal(request.tools[0].function.name, "webSearch");
 });
 
-test("sends both private-Space headers and hides non-streaming reasoning", async () => {
+test("sends both private-Space headers and preserves non-streaming reasoning", async () => {
   let seenHeaders: Headers | undefined;
   let seenBody: Record<string, unknown> | undefined;
   const fetchImpl: typeof fetch = (_input, init) => {
@@ -131,10 +131,13 @@ test("sends both private-Space headers and hides non-streaming reasoning", async
     result.choices[0].message.content,
     "A final student-facing answer."
   );
-  assert.ok(!("reasoning_content" in result.choices[0].message));
+  assert.equal(
+    result.choices[0].message.reasoning_content,
+    "private reasoning text"
+  );
 });
 
-test("keeps structured app tool calls while filtering streamed reasoning", async () => {
+test("streams GPT-OSS reasoning and keeps structured app tool calls", async () => {
   let sentBody: Record<string, unknown> | undefined;
   const fetchImpl: typeof fetch = (_input, init) => {
     sentBody = JSON.parse(String(init?.body));
@@ -248,7 +251,13 @@ test("keeps structured app tool calls while filtering streamed reasoning", async
       ? JSON.parse(toolCall.input)
       : toolCall.input;
   assert.deepEqual(input, { query: "photosynthesis" });
-  assert.ok(!parts.some((part) => part.type === "reasoning-delta"));
+  assert.ok(
+    parts.some(
+      (part) =>
+        part.type === "reasoning-delta" &&
+        part.delta === "private reasoning text"
+    )
+  );
   assert.equal(sentBody?.model, "gpt-oss-20b");
   assert.equal(
     (sentBody?.tools as Array<{ function: { name: string } }>)[0].function.name,

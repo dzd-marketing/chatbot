@@ -383,33 +383,8 @@ function cleanHeaders(response: Response) {
   return headers;
 }
 
-function stripReasoning(value: unknown) {
-  if (!isRecord(value)) {
-    return value;
-  }
-  value.reasoning_content = undefined;
-  value.reasoning = undefined;
-  value.reasoning_details = undefined;
-  if (Array.isArray(value.choices)) {
-    for (const choice of value.choices) {
-      if (!isRecord(choice)) {
-        continue;
-      }
-      for (const key of ["delta", "message"] as const) {
-        const part = choice[key];
-        if (isRecord(part)) {
-          part.reasoning_content = undefined;
-          part.reasoning = undefined;
-          part.reasoning_details = undefined;
-        }
-      }
-    }
-  }
-  return value;
-}
-
-/** Filter reasoning fields from OpenAI-compatible SSE without buffering the answer. */
-function filterGptOssSse(): TransformStream<Uint8Array, Uint8Array> {
+/** Normalize OpenAI-compatible SSE while preserving streamed reasoning deltas. */
+function normalizeGptOssSse(): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = "";
@@ -436,9 +411,8 @@ function filterGptOssSse(): TransformStream<Uint8Array, Uint8Array> {
       return;
     }
 
-    const sanitized = stripReasoning(parsed);
     const prefix = lines.filter((line) => !line.startsWith("data:")).join("\n");
-    const output = [prefix, `data: ${JSON.stringify(sanitized)}`]
+    const output = [prefix, `data: ${JSON.stringify(parsed)}`]
       .filter(Boolean)
       .join("\n");
     controller.enqueue(encoder.encode(`${output}\n\n`));
@@ -569,7 +543,7 @@ async function sanitizedErrorResponse(response: Response) {
   );
 }
 
-async function sanitizedJsonResponse(response: Response) {
+async function preservedReasoningJsonResponse(response: Response) {
   const body: unknown = await response
     .clone()
     .json()
@@ -579,7 +553,7 @@ async function sanitizedJsonResponse(response: Response) {
   }
   const headers = cleanHeaders(response);
   await response.body?.cancel().catch(() => undefined);
-  return new Response(JSON.stringify(stripReasoning(body)), {
+  return new Response(JSON.stringify(body), {
     headers,
     status: response.status,
     statusText: response.statusText,
@@ -588,7 +562,8 @@ async function sanitizedJsonResponse(response: Response) {
 
 /**
  * Authenticates server-to-server, fixes the model-specific request fields,
- * waits out the Space's initial model load, and strips private reasoning data.
+ * waits out the Space's initial model load, and preserves reasoning for the
+ * chat's existing streamed reasoning UI.
  */
 export function createGptOssFetch(
   options: GptOssFetchOptions,
@@ -626,14 +601,14 @@ export function createGptOssFetch(
     const contentType = response.headers.get("content-type") ?? "";
     if (contentType.includes("text/event-stream") && response.body) {
       const responseHeaders = cleanHeaders(response);
-      return new Response(response.body.pipeThrough(filterGptOssSse()), {
+      return new Response(response.body.pipeThrough(normalizeGptOssSse()), {
         headers: responseHeaders,
         status: response.status,
         statusText: response.statusText,
       });
     }
     if (contentType.includes("application/json")) {
-      return sanitizedJsonResponse(response);
+      return preservedReasoningJsonResponse(response);
     }
     return response;
   };
